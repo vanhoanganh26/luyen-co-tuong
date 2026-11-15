@@ -6,7 +6,7 @@
 // trên GitHub Pages (nơi không tự đặt header được).
 // File engine (thư mục engine/) được cache tự động ở lần dùng đầu tiên.
 // =====================================================================
-const CACHE_VERSION = 'xqt-v0.6.0';
+const CACHE_VERSION = 'xqt-v0.7.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -16,7 +16,9 @@ const APP_SHELL = [
   './js/core/xiangqi.js',
   './js/core/notation.js',
   './js/core/game.js',
+  './js/ui/board-themes.js',
   './js/ui/board-view.js',
+  './fonts/lxgw-wenkai-tc-quan-co.woff2',
   './js/ui/sound.js',
   './js/storage/storage.js',
   './js/train/srs.js',

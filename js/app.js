@@ -6,6 +6,7 @@ import { Position, START_FEN, RED, colorOf } from './core/xiangqi.js';
 import { parseNotation } from './core/notation.js';
 import { Game } from './core/game.js';
 import { BoardView } from './ui/board-view.js';
+import { BOARD_THEMES, PIECE_SETS, PIECE_STYLES } from './ui/board-themes.js';
 import { Sound } from './ui/sound.js';
 import { store } from './storage/storage.js';
 import { initOpenings } from './modes/openings.js';
@@ -16,13 +17,15 @@ import { initOverview } from './modes/overview.js';
 import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 
-export const APP_VERSION = '0.6.0';
+export const APP_VERSION = '0.7.0';
 
 const $ = (id) => document.getElementById(id);
 
 // ---------- Cài đặt ----------
 const DEFAULTS = {
-  pieceStyle: 'han',     // 'han' | 'viet'
+  pieceStyle: 'han',     // 'han' | 'thuphap' | 'viet' | 'icon'
+  boardTheme: 'go',      // xem BOARD_THEMES trong js/ui/board-themes.js
+  pieceSet: 'go',        // xem PIECE_SETS
   notation: 'vn',        // 'vn' | 'wxf'
   vnAdvance: '.',        // '.' | '+'
   repetitionRule: 'warn',// 'warn' | 'draw'
@@ -275,7 +278,10 @@ const bindChk = (id, key, after) => {
   s.onchange = () => { settings[key] = s.checked; saveSettings(); after?.(); };
 };
 $('btnSettings').onclick = () => {
-  bindSel('setPieces', 'pieceStyle', () => view.setPieceStyle(settings.pieceStyle));
+  fillLook();
+  bindSel('setBoard', 'boardTheme', applyLook);
+  bindSel('setPieceSet', 'pieceSet', applyLook);
+  bindSel('setPieces', 'pieceStyle', applyLook);
   bindSel('setNotation', 'notation', () => { renderMoves(); updatePlaceholder(); });
   bindSel('setAdvance', 'vnAdvance', () => { renderMoves(); updatePlaceholder(); });
   bindSel('setRepeat', 'repetitionRule', () => refresh());
@@ -287,7 +293,38 @@ $('btnSettings').onclick = () => {
     ? `Phiên bản ${APP_VERSION}. Cài đặt và ván đang chơi được lưu trên máy này.`
     : `Phiên bản ${APP_VERSION}. Trình duyệt đang chặn lưu trữ — dữ liệu chỉ giữ trong phiên này.`;
   dlgSet.showModal();
+  applyLook();
 };
+
+// ---------- Giao diện bàn & quân (kèm bàn xem thử trong Cài đặt) ----------
+let preview = null;
+function fillLook() {
+  const opts = (list) => list.map((x) => `<option value="${x.id}">${x.name}</option>`).join('');
+  $('setBoard').innerHTML = opts(BOARD_THEMES);
+  $('setPieceSet').innerHTML = opts(PIECE_SETS);
+  $('setPieces').innerHTML = opts(PIECE_STYLES);
+}
+function lookOf(v) {
+  v.boardTheme = settings.boardTheme; v.pieceSet = settings.pieceSet; v.pieceStyle = settings.pieceStyle;
+  if (v.svg) { v.setBoardTheme(settings.boardTheme); v.setPieceSet(settings.pieceSet); v.setPieceStyle(settings.pieceStyle); }
+}
+function applyLook() {
+  // Giá trị cũ không còn trong danh sách => về mặc định
+  if (!BOARD_THEMES.some((x) => x.id === settings.boardTheme)) settings.boardTheme = 'go';
+  if (!PIECE_SETS.some((x) => x.id === settings.pieceSet)) settings.pieceSet = 'go';
+  if (!PIECE_STYLES.some((x) => x.id === settings.pieceStyle)) settings.pieceStyle = 'han';
+  lookOf(view);
+  if (dlgSet.open) {
+    if (!preview) {
+      preview = new BoardView($('setPreview'), { canPick: () => false, getLegalTargets: () => [], onMove: () => {} });
+      preview.setInteractive(false);
+    }
+    lookOf(preview);
+    // Thế xem thử: thế khởi đầu
+    const b = new Game().pos.board.slice();
+    preview.render({ board: b, last: null, checkSq: -1 });
+  }
+}
 function updatePlaceholder() {
   const eg = settings.notation === 'wxf' ? 'C2.5, H8+7' : settings.vnAdvance === '+' ? 'P2-5, M8+7' : 'P2-5, M8.7';
   $('moveText').placeholder = `Nhập nước, VD: ${eg}`;
@@ -378,7 +415,7 @@ document.addEventListener('keydown', (e) => {
 engine.useNnue = settings.nnue === 'on' || (settings.nnue === 'auto' && !EngineClient.isWeakDevice());
 applyTheme();
 applySound();
-view.pieceStyle = settings.pieceStyle;
+applyLook();
 view.showLegal = settings.showLegal;
 view.flipped = flipped;
 view._drawGrid();

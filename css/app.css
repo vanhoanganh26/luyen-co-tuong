@@ -182,31 +182,78 @@ h2 { font-size: 16px; margin: 0; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ---------- Phông thư pháp (LXGW WenKai TC, SIL OFL 1.1 — chỉ gồm 18 chữ trên quân/bàn; xem fonts/OFL.txt) ---------- */
+@font-face {
+  font-family: "XQ WenKai"; font-style: normal; font-weight: 700; font-display: block;
+  src: url("../fonts/lxgw-wenkai-tc-quan-co.woff2") format("woff2");
+}
+
 /* ---------- Bàn cờ SVG ---------- */
-.bd-bg { fill: var(--wood); stroke: var(--wood-edge); stroke-width: 6; }
-.bd-frame { fill: none; stroke: var(--line); stroke-width: 5; }
-.bd-line { stroke: var(--line); stroke-width: 2.2; }
-.bd-mark { fill: none; stroke: var(--line); stroke-width: 2.2; }
-.bd-river { fill: var(--river); font-size: 40px; font-weight: 700; letter-spacing: 4px; opacity: .85; font-family: "Segoe UI", system-ui, sans-serif; }
+/* Biến riêng của bàn: --b-bg nền, --b-edge viền, --b-line nét kẻ, --b-river chữ sông */
+.xq-board {
+  --b-bg: var(--wood); --b-edge: var(--wood-edge); --b-line: var(--line); --b-river: var(--river); --b-tex: .9;
+  /* Quân: --q0/--q1 dải màu thân, --q-edge viền thân, --q-red/--q-black màu chữ & vòng */
+  --q0: var(--pc-0); --q1: var(--pc-1); --q-edge: #8a6234; --q-red: var(--pc-red); --q-black: var(--pc-black);
+  --q-red-ring: var(--q-red); --q-black-ring: var(--q-black);
+}
+.xq-board[data-board="trac"]     { --b-bg: #6b3820; --b-edge: #3a1c0d; --b-line: #f0d6a2; --b-river: #f0d6a2; }
+.xq-board[data-board="giay"]     { --b-bg: #eadab3; --b-edge: #a98d5c; --b-line: #3b2b1c; --b-river: #a3271b; }
+.xq-board[data-board="ngoc"]     { --b-bg: #2e7a5e; --b-edge: #1b4a39; --b-line: #e8f7ee; --b-river: #d4f1e1; }
+.xq-board[data-board="camthach"] { --b-bg: #eeece7; --b-edge: #a7a39c; --b-line: #3a3a40; --b-river: #66666f; }
+.xq-board[data-board="thidau"]   { --b-bg: #f4c64e; --b-edge: #c4961f; --b-line: #1f1a12; --b-river: #1f1a12; --b-tex: 0; }
+.xq-board[data-board="vai"]      { --b-bg: #d7c9a8; --b-edge: #8f7d56; --b-line: #4a2c18; --b-river: #7d2b1b; }
+.xq-board[data-board="toigian"]  { --b-bg: #f7f7f4; --b-edge: #e0e0db; --b-line: #9c9c97; --b-river: #b9b9b2; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .xq-board[data-board="toigian"] { --b-bg: #23252a; --b-edge: #34373d; --b-line: #6e727a; --b-river: #5c6068; }
+}
+:root[data-theme="dark"] .xq-board[data-board="toigian"] { --b-bg: #23252a; --b-edge: #34373d; --b-line: #6e727a; --b-river: #5c6068; }
+.xq-board[data-board="toigian"] .bd-line, .xq-board[data-board="toigian"] .bd-mark { stroke-width: 1.6; }
+.xq-board[data-board="toigian"] .bd-frame { stroke-width: 3; }
+.xq-board[data-board="vai"] .bd-line, .xq-board[data-board="vai"] .bd-mark { stroke-width: 3; stroke-linecap: round; }
+
+/* Chất liệu quân */
+.xq-board[data-pieces="nga"]   { --q0: #fffdf5; --q1: #e6dbc2; --q-edge: #b3a27e; --q-red: #c0231a; --q-black: #222; }
+.xq-board[data-pieces="ngoc"]  { --q0: #e6f6ea; --q1: #8fc4a2; --q-edge: #4f8a67; --q-red: #a3121a; --q-black: #0f2d20; }
+.xq-board[data-pieces="dong"]  { --q0: #f3d08c; --q1: #9a6528; --q-edge: #5e3a12; --q-red: #8a0f0b; --q-black: #1c1209; }
+.xq-board[data-pieces="phang"] { --q-edge: transparent; --q-red: #fff; --q-black: #fff; --q-red-ring: rgba(255,255,255,.75); --q-black-ring: rgba(255,255,255,.6); }
+.xq-board[data-pieces="phang"] .pc-body { filter: none; stroke: none; }
+.xq-board[data-pieces="phang"] .pc-red .pc-body { fill: #d23a2e; }
+.xq-board[data-pieces="phang"] .pc-black .pc-body { fill: #2e3136; }
+.xq-board[data-pieces="phang"] .pc-ring { stroke-width: 2; }
+.xq-board[data-pieces="dong"] .pc-text, .xq-board[data-pieces="dong"] .pc-icon { paint-order: stroke; stroke: rgba(255, 230, 170, .55); stroke-width: 2px; }
+.xq-board[data-pieces="ngoc"] .pc-body { stroke-width: 2.5; }
+
+.bd-bg { fill: var(--b-bg); stroke: var(--b-edge); stroke-width: 6; }
+.bd-tex { pointer-events: none; opacity: var(--b-tex); }
+.bd-frame { fill: none; stroke: var(--b-line); stroke-width: 5; }
+.bd-line { stroke: var(--b-line); stroke-width: 2.2; }
+.bd-mark { fill: none; stroke: var(--b-line); stroke-width: 2.2; }
+.bd-river { fill: var(--b-river); font-size: 40px; font-weight: 700; letter-spacing: 4px; opacity: .85; font-family: "Segoe UI", system-ui, sans-serif; }
 .bd-river.han { font-family: "KaiTi", "STKaiti", "BiauKai", "Noto Serif CJK SC", "Noto Serif CJK TC", "SimSun", serif; font-size: 50px; letter-spacing: 16px; }
-.bd-coord { fill: var(--line); font-size: 26px; font-weight: 600; opacity: .75; font-family: system-ui, sans-serif; }
+.bd-river.tp { font-family: "XQ WenKai", "KaiTi", "STKaiti", serif; font-size: 56px; }
+.bd-coord { fill: var(--b-line); font-size: 26px; font-weight: 600; opacity: .75; font-family: system-ui, sans-serif; }
 
 .pc { transition: none; cursor: pointer; }
 .pc.moving { transition: transform .22s ease-out; }
 .pc.dragging { filter: drop-shadow(0 10px 8px rgba(0, 0, 0, .35)); cursor: grabbing; }
-.pc-g0 { stop-color: var(--pc-0); }
-.pc-g1 { stop-color: var(--pc-1); }
-.pc-body { stroke: #8a6234; stroke-width: 2; }
+.pc-g0 { stop-color: var(--q0); }
+.pc-g1 { stop-color: var(--q1); }
+.pc-body { stroke: var(--q-edge); stroke-width: 2; }
 .pc-ring { fill: none; stroke-width: 2.5; }
-.pc-red .pc-ring { stroke: var(--pc-red); }
-.pc-black .pc-ring { stroke: var(--pc-black); }
+.pc-red .pc-ring { stroke: var(--q-red-ring); }
+.pc-black .pc-ring { stroke: var(--q-black-ring); }
 .pc-text { font-weight: 700; pointer-events: none; }
-.pc-red .pc-text { fill: var(--pc-red); }
-.pc-black .pc-text { fill: var(--pc-black); }
+.pc-red .pc-text, .pc-red .pc-icon { fill: var(--q-red); }
+.pc-black .pc-text, .pc-black .pc-icon { fill: var(--q-black); }
+.pc-icon { pointer-events: none; }
 .pc-text.han { font-size: 52px; font-family: "KaiTi", "STKaiti", "BiauKai", "Noto Serif CJK TC", "Noto Serif CJK SC", "Microsoft JhengHei", "SimSun", serif; }
+.pc-text.han.tp { font-size: 56px; font-family: "XQ WenKai", "KaiTi", "STKaiti", serif; }
 .pc-text.viet { font-size: 27px; font-family: system-ui, "Segoe UI", Roboto, sans-serif; letter-spacing: -.5px; }
 .pc-text.viet.long { font-size: 20px; letter-spacing: -1px; }
 .pc.in-check .pc-body { stroke: var(--mk-check); stroke-width: 7; }
+
+/* Bàn xem thử trong Cài đặt */
+.set-preview { width: 100%; max-width: 260px; margin: 2px auto 6px; pointer-events: none; }
 
 .mk-last-from { fill: none; stroke: var(--mk-last); stroke-width: 4; stroke-dasharray: 10 8; }
 .mk-last-to { fill: none; stroke: var(--mk-last); stroke-width: 5; }

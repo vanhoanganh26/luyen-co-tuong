@@ -4,6 +4,7 @@
 //   getLegalTargets(fromSq) -> [toSq...]   canPick(sq) -> bool   onMove({from,to})
 // =====================================================================
 import { colorOf, typeOf, rowOf, colOf, RED } from '../core/xiangqi.js';
+import { ICONS, textureUrl } from './board-themes.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const CELL = 100, M = 60, MY = 96;    // kích thước ô, lề ngang, lề dọc (chừa chỗ ghi số cột)
@@ -15,6 +16,7 @@ export const HAN = {
   k: '將', a: '士', b: '象', n: '馬', r: '車', c: '砲', p: '卒',
 };
 export const VIET = { k: 'Tướng', a: 'Sĩ', b: 'Tượng', n: 'Mã', r: 'Xe', c: 'Pháo', p: 'Tốt' };
+let uidSeq = 0; // mỗi bàn cờ một tiền tố id riêng (có thể có bàn xem thử trong Cài đặt)
 
 const el = (tag, attrs = {}, parent) => {
   const e = document.createElementNS(NS, tag);
@@ -28,7 +30,10 @@ export class BoardView {
     this.container = container;
     this.opts = opts;               // { getLegalTargets, canPick, onMove, onSelect }
     this.flipped = false;
-    this.pieceStyle = 'han';
+    this.pieceStyle = 'han';        // 'han' | 'thuphap' | 'viet' | 'icon'
+    this.boardTheme = 'go';
+    this.pieceSet = 'go';
+    this.uid = 'xb' + (++uidSeq);
     this.showLegal = true;
     this.board = new Array(90).fill(null);
     this.selected = -1;
@@ -62,17 +67,20 @@ export class BoardView {
 
   // ---------- Dựng bàn ----------
   _build() {
-    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'xq-board', role: 'img', 'aria-label': 'Bàn cờ tướng' });
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'xq-board', role: 'img', 'aria-label': 'Bàn cờ tướng', 'data-board': this.boardTheme, 'data-pieces': this.pieceSet });
     this.svg = svg;
     const defs = el('defs', {}, svg);
     // Vân gỗ cho quân cờ
-    const g1 = el('radialGradient', { id: 'pieceGrad', cx: '40%', cy: '35%', r: '70%' }, defs);
+    const g1 = el('radialGradient', { id: this.uid + 'pg', cx: '40%', cy: '35%', r: '70%' }, defs);
     el('stop', { offset: '0%', class: 'pc-g0' }, g1);
     el('stop', { offset: '100%', class: 'pc-g1' }, g1);
-    const sh = el('filter', { id: 'pieceShadow', x: '-30%', y: '-30%', width: '160%', height: '160%' }, defs);
+    const sh = el('filter', { id: this.uid + 'ps', x: '-30%', y: '-30%', width: '160%', height: '160%' }, defs);
     el('feDropShadow', { dx: '0', dy: '4', stdDeviation: '3', 'flood-opacity': '0.35' }, sh);
 
     el('rect', { x: 0, y: 0, width: W, height: H, rx: 18, class: 'bd-bg' }, svg);
+    // Vân bề mặt (gỗ, giấy, ngọc…) — ảnh SVG phủ lên nền màu
+    this.texNode = el('image', { x: 0, y: 0, width: W, height: H, class: 'bd-tex', preserveAspectRatio: 'none' }, svg);
+    this._applyTexture();
     this.gridLayer = el('g', { class: 'bd-grid' }, svg);
     this.markLayer = el('g', { class: 'bd-marks' }, svg);
     this.pieceLayer = el('g', { class: 'bd-pieces' }, svg);
@@ -107,11 +115,11 @@ export class BoardView {
     for (const [r, c] of marks) this._cross(g, M + c * CELL, MY + r * CELL, c > 0, c < 8);
     // Chữ sông
     const yR = MY + 4.5 * CELL;
-    const han = this.pieceStyle === 'han';
+    const han = this.pieceStyle !== 'viet';
     const left = han ? '楚 河' : 'SỞ HÀ', right = han ? '漢 界' : 'HÁN GIỚI';
-    const t1 = el('text', { x: M + 2 * CELL, y: yR, class: 'bd-river' + (han ? ' han' : ''), 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g);
+    const t1 = el('text', { x: M + 2 * CELL, y: yR, class: 'bd-river' + (han ? ' han' : '') + (this.pieceStyle === 'thuphap' ? ' tp' : ''), 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g);
     t1.textContent = left;
-    const t2 = el('text', { x: M + 6 * CELL, y: yR, class: 'bd-river' + (han ? ' han' : ''), 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g);
+    const t2 = el('text', { x: M + 6 * CELL, y: yR, class: 'bd-river' + (han ? ' han' : '') + (this.pieceStyle === 'thuphap' ? ' tp' : ''), 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g);
     t2.textContent = right;
     // Số cột: dưới là bên đang ở dưới, trên là bên đối diện (1–9 tính từ phải mỗi bên)
     for (let c = 0; c < 9; c++) {
@@ -137,12 +145,17 @@ export class BoardView {
   _pieceNode(p, x, y) {
     const g = el('g', { class: `pc ${colorOf(p) === RED ? 'pc-red' : 'pc-black'}` });
     g.style.transform = `translate(${x}px, ${y}px)`;
-    el('circle', { r: PR, class: 'pc-body', fill: 'url(#pieceGrad)', filter: 'url(#pieceShadow)' }, g);
+    el('circle', { r: PR, class: 'pc-body', fill: `url(#${this.uid}pg)`, filter: `url(#${this.uid}ps)` }, g);
     el('circle', { r: PR - 7, class: 'pc-ring' }, g);
+    if (this.pieceStyle === 'icon') {
+      el('path', { d: ICONS[typeOf(p)], class: 'pc-icon', 'fill-rule': 'evenodd' }, g);
+      return g;
+    }
     const t = el('text', { class: 'pc-text', 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g);
-    if (this.pieceStyle === 'han') {
+    if (this.pieceStyle === 'han' || this.pieceStyle === 'thuphap') {
       t.textContent = HAN[p];
       t.classList.add('han');
+      if (this.pieceStyle === 'thuphap') t.classList.add('tp');
     } else {
       const word = VIET[typeOf(p)];
       t.textContent = word;
@@ -218,6 +231,13 @@ export class BoardView {
 
   setFlipped(f) { this.flipped = f; this._drawGrid(); this.render({ board: this.board, last: this.last, checkSq: this.checkSq }); }
   setPieceStyle(s) { this.pieceStyle = s; this._drawGrid(); this.render({ board: this.board, last: this.last, checkSq: this.checkSq }); }
+  setBoardTheme(t) { this.boardTheme = t; this.svg.dataset.board = t; this._applyTexture(); }
+  setPieceSet(s) { this.pieceSet = s; this.svg.dataset.pieces = s; }
+  _applyTexture() {
+    const url = textureUrl(this.boardTheme);
+    if (url) { this.texNode.setAttribute('href', url); this.texNode.style.display = ''; }
+    else { this.texNode.removeAttribute('href'); this.texNode.style.display = 'none'; }
+  }
   setShowLegal(v) { this.showLegal = v; this._drawMarks(); }
   setHint(h) { this.hint = h; this._drawMarks(); }
   setInteractive(v) { this.interactive = v; if (!v) this.clearSelection(); }

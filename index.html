@@ -299,8 +299,10 @@
   <dialog id="dlgSettings" class="dlg">
     <form method="dialog" class="dlg-body settings">
       <h2>Cài đặt</h2>
-      <label class="set"><span>Chữ trên quân</span>
-        <select id="setPieces"><option value="han">Chữ Hán (帥 將 車…)</option><option value="viet">Chữ Việt (Tướng, Xe…)</option></select></label>
+      <div id="setPreview" class="set-preview" aria-hidden="true"></div>
+      <label class="set"><span>Kiểu bàn cờ</span><select id="setBoard"></select></label>
+      <label class="set"><span>Chất liệu quân</span><select id="setPieceSet"></select></label>
+      <label class="set"><span>Chữ trên quân</span><select id="setPieces"></select></label>
       <label class="set"><span>Ký pháp</span>
         <select id="setNotation"><option value="vn">Việt Nam (P2-5, M8.7)</option><option value="wxf">Quốc tế WXF (C2.5, H8+7)</option></select></label>
       <label class="set"><span>Dấu "tiến" kiểu VN</span>
