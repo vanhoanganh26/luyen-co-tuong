@@ -130,7 +130,7 @@ export function planAdvice(f, me) {
   if (worse('weak')) tips.push('Có quân đang gặp nguy → xử lý trước (tránh, bảo vệ hoặc phản đòn) rồi mới tính chuyện khác.');
   if (better('weak')) tips.push('Đối phương có quân đang gặp nguy → tìm cách ăn hoặc tăng sức ép lên quân đó.');
   if (worse('king')) tips.push('Cung tướng mình đang bị nhắm → củng cố sĩ tượng hoặc đổi bớt quân tấn công của địch.');
-  if (better('king')) tips.push('Cung tướng đối phương yếu → dồn thêm quân (xe, pháo, mã) vào cánh có tướng địch.');
+  if (better('king')) tips.push('Cung tướng đối phương đang bị nhắm nhiều hơn cung mình → dồn thêm quân (xe, pháo, mã) vào cánh có tướng địch.');
   if (worse('activity')) tips.push('Quân mình kém hoạt động hơn → cải thiện quân kém nhất trước (thường là xe chưa ra hoặc mã bị cản chân).');
   if (worse('lines')) tips.push('Đối phương đang chiếm tuyến then chốt → tranh cột thông, đưa xe ra tuần hà hoặc đổi xe của địch.');
   if (better('pawns')) tips.push('Có tốt qua sông → phối hợp tốt với xe/mã, đẩy tốt áp sát cung khi an toàn.');

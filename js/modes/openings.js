@@ -13,6 +13,7 @@ import { moveToNotation } from '../core/notation.js';
 import { engine } from '../engine/client.js';
 import { analyzeMove, purposeQuiz } from '../train/move-insight.js';
 import { whyHTML, loadInsights } from './why.js';
+import { renderAfterOpening } from './after-opening.js';
 
 const $ = (id) => document.getElementById(id);
 const SIDE_NAME = { r: 'Đỏ (đi trước)', b: 'Đen (đi sau)' };
@@ -468,17 +469,27 @@ export function initOpenings(ctx) {
     $('trEnd').hidden = false;
     $('trReveal').hidden = true;
     $('trQuiz').hidden = true;
+    showAnalysis(t);
     if (purpose) {
       $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: anh đoán đúng ý đồ ${quizScore.right}/${quizScore.total} nước.`;
-      $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc: ' + line.plan : '';
+      $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc (soạn sẵn): ' + line.plan : '';
       setFeedback(quizScore.right === quizScore.total ? 'ok' : 'warn', 'Hết biến. Xem lại các nước đoán sai bằng nút "Luyện lại".');
       Sound.end();
       return;
     }
     $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: đúng ngay ${t.score.correct}/${total}, đúng ở lần 2: ${t.score.retry}, sai: ${t.score.wrong}.`;
-    $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc: ' + line.plan : '';
+    $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc (soạn sẵn): ' + line.plan : '';
     setFeedback(t.score.wrong ? 'warn' : 'ok', t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!');
     Sound.end();
+  }
+
+  /** Phân tích "sau khai cuộc" ở thế cuối biến */
+  function showAnalysis(t) {
+    const box = $('trAnalysis');
+    renderAfterOpening(box, {
+      fen: t.pos.fen(), me: t.side, view, label: ctx.moveLabelVN, engine,
+      isActive: () => trainer === t && !$('trEnd').hidden,
+    });
   }
 
   // Bộ điều khiển bàn cờ khi đang luyện

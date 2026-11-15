@@ -18,7 +18,7 @@ import { initThink } from './modes/think.js';
 import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 
-export const APP_VERSION = '0.8.0';
+export const APP_VERSION = '0.8.1';
 
 const $ = (id) => document.getElementById(id);
 

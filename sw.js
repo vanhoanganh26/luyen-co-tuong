@@ -6,7 +6,7 @@
 // trên GitHub Pages (nơi không tự đặt header được).
 // File engine (thư mục engine/) được cache tự động ở lần dùng đầu tiên.
 // =====================================================================
-const CACHE_VERSION = 'xqt-v0.8.0';
+const CACHE_VERSION = 'xqt-v0.8.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -30,6 +30,8 @@ const APP_SHELL = [
   './js/train/move-insight.js',
   './js/train/position-factors.js',
   './js/train/lessons.js',
+  './js/train/weakness.js',
+  './js/modes/after-opening.js',
   './js/modes/why.js',
   './js/modes/think.js',
   './js/modes/overview.js',
@@ -45,6 +47,7 @@ const APP_SHELL = [
   './data/openings.built.json',
   './data/positions.built.json',
   './data/insights.json',
+  './data/plans.json',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
