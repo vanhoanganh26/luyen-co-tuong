@@ -11,6 +11,8 @@ import { logActivity } from '../train/progress.js';
 import { parseCoordMove, colorOf, Position, moveToICCS } from '../core/xiangqi.js';
 import { moveToNotation } from '../core/notation.js';
 import { engine } from '../engine/client.js';
+import { analyzeMove, purposeQuiz } from '../train/move-insight.js';
+import { whyHTML, loadInsights } from './why.js';
 
 const $ = (id) => document.getElementById(id);
 const SIDE_NAME = { r: 'Đỏ (đi trước)', b: 'Đen (đi sau)' };
@@ -154,7 +156,7 @@ export function initOpenings(ctx) {
     const lastSide = store.getJSON('lastSide', 'r');
     (op.sides.includes(lastSide) ? (lastSide === 'r' ? r : b) : (op.sides[0] === 'r' ? r : b)).checked = true;
     const lastMode = store.getJSON('lastMode', 'learn');
-    (lastMode === 'test' ? $('opModeTest') : $('opModeLearn')).checked = true;
+    ({ test: $('opModeTest'), purpose: $('opModePurpose') }[lastMode] || $('opModeLearn')).checked = true;
     $('opLineCount').textContent = op.lines.length;
     const ol = $('opLines');
     ol.innerHTML = '';
@@ -301,15 +303,21 @@ export function initOpenings(ctx) {
   // ---------- Luyện ----------
   function start(op, side, mode) {
     lastCfg = { op, side, mode };
-    trainer = new OpeningTrainer(op, { side, mode, cards });
+    purpose = mode === 'purpose';
+    // Chế độ "Đoán ý đồ" không chấm lịch ôn (SRS) — dùng bộ thẻ tạm
+    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards });
+    quizScore = { right: 0, total: 0 };
+    loadInsights();
     prevFlip = view.flipped;
     ctx.setController(controller);
     ctx.showScreen('train');
     if (view.flipped !== (side === 'b')) view.setFlipped(side === 'b');
     $('trName').textContent = op.name;
-    $('trMode').textContent = mode === 'learn' ? 'Học mới' : 'Kiểm tra';
-    $('trMode').className = 'pill ' + (mode === 'learn' ? 'learn' : 'test');
-    $('trReveal').hidden = false;
+    $('trMode').textContent = mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra';
+    $('trMode').className = 'pill ' + (mode === 'test' ? 'test' : 'learn');
+    $('trReveal').hidden = purpose;
+    $('trQuiz').hidden = true;
+    clearWhy();
     $('trEnd').hidden = true;
     setFeedback('', '');
     $('trComment').textContent = '';
@@ -325,6 +333,74 @@ export function initOpenings(ctx) {
 
   function nodeNote(n) { return n && n.comments.length ? n.comments.join(' ') : ''; }
 
+  // ---------- "Vì sao?" ----------
+  let purpose = false, quizScore = { right: 0, total: 0 };
+  /** Thế cờ TRƯỚC nước của nút n */
+  function fenBefore(op, n) {
+    const p = new Position(op.startFen);
+    const keys = n.key.split(' ');
+    for (const mv of keys.slice(0, -1)) p.makeMove(parseCoordMove(mv));
+    return p.fen();
+  }
+  function clearWhy() { $('trWhy').hidden = true; $('trWhyBody').innerHTML = ''; }
+  async function showWhy(n, prefix) {
+    const t = trainer;
+    if (!n || !t) return clearWhy();
+    const fen = fenBefore(t.op, n);
+    $('trWhySum').textContent = `Vì sao ${prefix ? prefix + ' ' : ''}${ctx.moveLabelVN(n.vn)}?`;
+    $('trWhy').hidden = false;
+    const data = await loadInsights();
+    if (trainer !== t) return;
+    $('trWhyBody').innerHTML = whyHTML(fen, n.iccs, data, ctx.moveLabelVN);
+  }
+  $('trWhy').open = !!store.getJSON('whyOpen', true);
+  $('trWhy').addEventListener('toggle', () => store.setJSON('whyOpen', $('trWhy').open));
+
+  // ---------- "Đoán ý đồ": hỏi mục đích của nước lý thuyết bên anh ----------
+  function askPurpose() {
+    const t = trainer;
+    const ex = t.mainExpected();
+    const ins = analyzeMove(fenBefore(t.op, ex), parseCoordMove(ex.iccs));
+    const q = purposeQuiz(ins);
+    view.setHint(parseCoordMove(ex.iccs));
+    clearWhy();
+    $('trComment').textContent = '';
+    setFeedback('info', `Nước lý thuyết tiếp theo của anh là <b>${ctx.moveLabelVN(ex.vn)}</b> (đã đánh dấu trên bàn). Nước này nhằm mục đích <b>chính</b> gì?`);
+    const box = $('trQuiz');
+    box.hidden = false;
+    box.innerHTML = q.options.map((o, i) => `<button class="btn quiz-opt" data-i="${i}">${o.text}</button>`).join('');
+    box.querySelectorAll('.quiz-opt').forEach((b) => {
+      b.onclick = () => {
+        const pick = q.options[+b.dataset.i];
+        const ok = pick.cat === q.answer;
+        quizScore.total++; if (ok) quizScore.right++;
+        logActivity(store, 'open');
+        const stats = store.getJSON('purposeStats', { right: 0, total: 0 });
+        stats.total++; if (ok) stats.right++;
+        store.setJSON('purposeStats', stats);
+        box.querySelectorAll('.quiz-opt').forEach((x) => {
+          const o = q.options[+x.dataset.i];
+          x.disabled = true;
+          if (o.cat === q.answer) x.classList.add('right');
+          else if (x === b) x.classList.add('wrong');
+        });
+        ok ? Sound.move() : Sound.error();
+        setFeedback(ok ? 'ok' : 'bad', (ok ? 'Đúng! ' : 'Chưa đúng. ') + `Mục đích chính của <b>${ctx.moveLabelVN(ex.vn)}</b>: ${ins.tags.filter((x) => x.cat === q.answer).map((x) => x.text).join('; ')}. <span class="muted small">(Đúng ${quizScore.right}/${quizScore.total} câu trong lượt này.)</span>`);
+        // Đi nước lý thuyết rồi hiện giải thích đầy đủ
+        const res = t.userMove(parseCoordMove(ex.iccs));
+        update(parseCoordMove(ex.iccs));
+        showWhy(res.node || ex);
+        if (!t.isEnd()) $('status').textContent = 'Đọc giải thích rồi bấm "Tiếp tục"';
+        const next = document.createElement('button');
+        next.className = 'btn primary quiz-next';
+        next.textContent = 'Tiếp tục ▸';
+        next.onclick = () => { box.hidden = true; step(); };
+        box.appendChild(next);
+        next.focus();
+      };
+    });
+  }
+
   function update(animate = null) {
     const t = trainer;
     const pos = t.pos;
@@ -332,7 +408,7 @@ export function initOpenings(ctx) {
     const last = t.path.length ? parseCoordMove(t.path[t.path.length - 1].node.iccs) : null;
     view.render({ board: pos.board, last, checkSq, animate });
     // Gợi ý ở chế độ Học mới
-    if (t.mode === 'learn' && t.isUserTurn()) {
+    if (t.mode === 'learn' && !purpose && t.isUserTurn()) {
       const ex = t.mainExpected();
       view.setHint(parseCoordMove(ex.iccs));
     } else view.setHint(null);
@@ -346,7 +422,8 @@ export function initOpenings(ctx) {
     const warnEl = document.getElementById('trEngineWarn');
     const thr = line?.verification?.engineThreshold || 80;
     if (warnEl) warnEl.textContent = loss > thr ? `⚠ Engine đánh giá nước vừa đi mất khoảng ${(loss / 100).toFixed(1)} điểm — biến này đang được gắn cờ "cần xem lại".` : '';
-    $('trMeta').textContent = `Anh cầm ${SIDE_NAME[t.side]} · ${line ? line.name : ''} · nước ${t.path.length}${done ? ` · đúng ${t.score.correct}/${done}` : ''}`;
+    const scoreTxt = purpose ? (quizScore.total ? ` · đoán đúng ${quizScore.right}/${quizScore.total}` : '') : (done ? ` · đúng ${t.score.correct}/${done}` : '');
+    $('trMeta').textContent = `Anh cầm ${SIDE_NAME[t.side]} · ${line ? line.name : ''} · nước ${t.path.length}${scoreTxt}`;
     $('trMoves').textContent = t.path.map((p, i) => (i % 2 === 0 ? `${i / 2 + 1}.` : '') + ctx.moveLabelVN(p.node.vn) + (p.result === 'wrong' ? '✗' : '')).join(' ');
   }
 
@@ -355,11 +432,13 @@ export function initOpenings(ctx) {
     const t = trainer;
     if (t.isEnd()) return finish();
     if (t.isUserTurn()) {
+      if (purpose) { askPurpose(); return; }
       if (t.mode === 'learn') {
         const ex = t.mainExpected();
         const alt = t.expected().length > 1 ? ` (lý thuyết còn ${t.expected().length - 1} nước khác cũng đúng)` : '';
         setFeedback('info', `Lượt anh. Nước lý thuyết: <b>${ctx.moveLabelVN(ex.vn)}</b>${alt}`);
         $('trComment').textContent = nodeNote(ex);
+        showWhy(ex, 'đi');
       } else if (!$('trFeedback').textContent) {
         setFeedback('info', 'Lượt anh. Đi nước theo lý thuyết.');
       }
@@ -375,6 +454,7 @@ export function initOpenings(ctx) {
       update(parseCoordMove(n.iccs));
       const note = nodeNote(n);
       $('trComment').textContent = note ? `Máy đi ${ctx.moveLabelVN(n.vn)}: ${note}` : `Máy đi ${ctx.moveLabelVN(n.vn)}.`;
+      showWhy(n, 'máy đi');
       step();
     }, t.path.length === 0 ? 350 : 650);
   }
@@ -387,6 +467,14 @@ export function initOpenings(ctx) {
     const total = t.score.correct + t.score.retry + t.score.wrong;
     $('trEnd').hidden = false;
     $('trReveal').hidden = true;
+    $('trQuiz').hidden = true;
+    if (purpose) {
+      $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: anh đoán đúng ý đồ ${quizScore.right}/${quizScore.total} nước.`;
+      $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc: ' + line.plan : '';
+      setFeedback(quizScore.right === quizScore.total ? 'ok' : 'warn', 'Hết biến. Xem lại các nước đoán sai bằng nút "Luyện lại".');
+      Sound.end();
+      return;
+    }
     $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: đúng ngay ${t.score.correct}/${total}, đúng ở lần 2: ${t.score.retry}, sai: ${t.score.wrong}.`;
     $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc: ' + line.plan : '';
     setFeedback(t.score.wrong ? 'warn' : 'ok', t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!');
@@ -396,7 +484,7 @@ export function initOpenings(ctx) {
   // Bộ điều khiển bàn cờ khi đang luyện
   const controller = {
     canPick(s) {
-      if (!trainer || busy || !trainer.isUserTurn()) return false;
+      if (!trainer || busy || purpose || !trainer.isUserTurn()) return false;
       const p = trainer.pos.board[s];
       return !!p && colorOf(p) === trainer.side;
     },
@@ -410,6 +498,7 @@ export function initOpenings(ctx) {
         setFeedback('ok', res.quality === 5 ? `Đúng: <b>${ctx.moveLabelVN(res.node.vn)}</b>` : `Đúng ở lần thử thứ hai: <b>${ctx.moveLabelVN(res.node.vn)}</b>`);
         $('trComment').textContent = note;
         update(m.dragged ? null : m);
+        showWhy(res.node);
         saveCards();
         step();
       } else if (res.result === 'retry') {
@@ -425,6 +514,7 @@ export function initOpenings(ctx) {
         const mine = ctx.moveLabelVN(moveToNotation(prevPos, res.played));
         setFeedback('bad', `Anh đi <b>${mine}</b>. Nước đúng là <b>${ctx.moveLabelVN(res.node.vn)}</b>. ${note ? 'Lý do: ' + note : 'Đây là nước theo biến lý thuyết.'}<br><span class="muted small" id="trEngineCmp">Đang nhờ engine so sánh hai nước…</span>`);
         update(parseCoordMove(res.node.iccs));
+        showWhy(res.node, 'phải đi');
         saveCards();
         compareMoves(t, before, res.played.iccs, res.node.iccs, mine, ctx.moveLabelVN(res.node.vn));
         setTimeout(step, 1800);
@@ -456,6 +546,7 @@ export function initOpenings(ctx) {
     setFeedback('bad', `Nước đúng là <b>${ctx.moveLabelVN(n.vn)}</b>.`);
     $('trComment').textContent = nodeNote(n);
     update(parseCoordMove(n.iccs));
+    showWhy(n, 'phải đi');
     saveCards();
     setTimeout(step, 1200);
   };

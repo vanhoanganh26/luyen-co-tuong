@@ -34,6 +34,7 @@
     <button class="tab" role="tab" id="tabOpen" data-tab="openings" aria-selected="false">Khai cuộc</button>
     <button class="tab" role="tab" id="tabMid" data-tab="mid" aria-selected="false">Trung cuộc</button>
     <button class="tab" role="tab" id="tabEnd" data-tab="end" aria-selected="false">Tàn cuộc</button>
+    <button class="tab" role="tab" id="tabThink" data-tab="think" aria-selected="false">Tư duy</button>
     <button class="tab" role="tab" id="tabPlay" data-tab="play" aria-selected="false">Đánh với máy</button>
     <button class="tab" role="tab" id="tabFree" data-tab="free" aria-selected="false">Bàn cờ</button>
   </nav>
@@ -111,6 +112,16 @@
     </div>
     <p class="muted small op-note" id="psNote">Đang tải dữ liệu thế cờ…</p>
     <div id="psList" class="op-grid ps-grid"></div>
+  </section>
+
+  <!-- Màn hình Tư duy: bài học + đọc thế trận -->
+  <section class="screen" id="screenThink" hidden>
+    <h2 class="th-h">Bài học tư duy</h2>
+    <p class="muted small op-note">Nguyên tắc chung kèm ví dụ là thế cờ thật trong các biến khai cuộc đã kiểm định.</p>
+    <div id="thLessons" class="op-grid th-grid"></div>
+    <div class="th-h-row"><h2 class="th-h">Đọc thế trận</h2><button class="btn primary" id="thRandom">Thế ngẫu nhiên</button></div>
+    <p class="muted small op-note" id="thReadNote">Đang tải…</p>
+    <div id="thReads" class="op-grid th-grid"></div>
   </section>
 
   <main class="layout" id="screenBoard" hidden>
@@ -232,6 +243,8 @@
         <p class="muted small" id="trMeta"></p>
         <div class="feedback" id="trFeedback" aria-live="polite"></div>
         <p class="comment" id="trComment"></p>
+        <div class="quiz" id="trQuiz" hidden></div>
+        <details class="why" id="trWhy" hidden><summary id="trWhySum">Vì sao?</summary><div id="trWhyBody" class="why-body"></div></details>
         <p class="small eng-flag" id="trEngineWarn"></p>
         <p class="tr-moves" id="trMoves"></p>
         <div class="row wrap">
@@ -250,6 +263,23 @@
           <button class="btn" id="trNextReview">Ôn ngẫu nhiên</button>
           <button class="btn" id="trToPlay">Đánh tiếp với máy</button>
           <button class="btn" id="trToFree">Đi tiếp tự do</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bảng Tư duy (bài học / đọc thế trận) -->
+    <aside class="panel" id="panelThink" hidden>
+      <div class="card">
+        <div class="card-head"><h2 id="thTitle">Tư duy</h2><span class="pill learn" id="thPill"></span></div>
+        <div id="thBody" class="th-body"></div>
+        <div id="thExample"></div>
+        <div id="thQuiz" class="th-quiz" hidden></div>
+        <div id="thResult" class="th-result"></div>
+        <div class="row wrap" id="thNav">
+          <button class="btn" id="thPrev">◂ Trước</button>
+          <button class="btn primary" id="thNext">Ví dụ tiếp ▸</button>
+          <span class="grow"></span>
+          <button class="btn" id="thExit">Về danh sách</button>
         </div>
       </div>
     </aside>
@@ -338,6 +368,7 @@
         <div class="seg" role="radiogroup" aria-label="Chế độ luyện">
           <label><input type="radio" name="opMode" value="learn" id="opModeLearn"><span>Học mới (có gợi ý)</span></label>
           <label><input type="radio" name="opMode" value="test" id="opModeTest"><span>Kiểm tra</span></label>
+          <label><input type="radio" name="opMode" value="purpose" id="opModePurpose"><span>Đoán ý đồ</span></label>
         </div>
       </div>
       <details class="lines-box" id="opLinesBox">

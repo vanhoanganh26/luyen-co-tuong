@@ -57,6 +57,12 @@ export function initOverview(ctx) {
     }).join('');
     const sum = (k) => Object.values(act).reduce((a, v) => a + (v[k] || 0), 0);
     $('hmTotals').textContent = `Tổng: ${sum('open')} nước khai cuộc · ${sum('mid')} thế trung cuộc · ${sum('end')} thế tàn cuộc · ${sum('play')} ván với máy.`;
+    const ps = store.getJSON('purposeStats', null), rs = store.getJSON('readStats', {}) || {};
+    const rv = Object.values(rs);
+    const think = [];
+    if (ps?.total) think.push(`Đoán ý đồ: đúng ${ps.right}/${ps.total} (${Math.round((100 * ps.right) / ps.total)}%)`);
+    if (rv.length) think.push(`Đọc thế trận: ${rv.length} thế, trung bình ${(rv.reduce((a, x) => a + x.score, 0) / rv.length).toFixed(1)}/7`);
+    if (think.length) $('hmTotals').textContent += ' ' + think.join(' · ') + '.';
 
     // ---- Tỉ lệ đúng theo khai cuộc ----
     const rows = startedOps.sort((a, b) => (a.acc ?? 1) - (b.acc ?? 1));

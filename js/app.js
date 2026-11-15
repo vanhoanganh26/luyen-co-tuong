@@ -14,10 +14,11 @@ import { initPlay } from './modes/play.js';
 import { initEditor } from './modes/editor.js';
 import { initPositions } from './modes/positions.js';
 import { initOverview } from './modes/overview.js';
+import { initThink } from './modes/think.js';
 import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 
-export const APP_VERSION = '0.7.0';
+export const APP_VERSION = '0.8.0';
 
 const $ = (id) => document.getElementById(id);
 
@@ -332,19 +333,23 @@ function updatePlaceholder() {
 
 // ---------- Chuyển màn hình ----------
 let positionsUI = null; // gán sau khi khởi tạo các chế độ
+let thinkUI = null;
 function showScreen(name) {
   // name: 'home' | 'free' | 'openings' | 'train' | 'play' | 'edit' | 'mid' | 'end' (danh sách thế cờ) | 'pos' (đang giải)
   const listScreen = name === 'mid' || name === 'end';
   $('screenHome').hidden = name !== 'home';
   $('screenOpenings').hidden = name !== 'openings';
+  $('screenThink').hidden = name !== 'think';
+  $('panelThink').hidden = name !== 'thinkpos';
+  $('tabThink').setAttribute('aria-selected', String(name === 'think' || name === 'thinkpos'));
   $('screenPositions').hidden = !listScreen;
-  $('screenBoard').hidden = name === 'openings' || listScreen || name === 'home';
+  $('screenBoard').hidden = name === 'openings' || listScreen || name === 'home' || name === 'think';
   $('panelPos').hidden = name !== 'pos';
   $('panelFree').hidden = name !== 'free';
   $('panelTrain').hidden = name !== 'train';
   $('panelPlay').hidden = name !== 'play';
   $('panelEdit').hidden = name !== 'edit';
-  document.body.classList.toggle('training', name === 'train' || name === 'play' || name === 'edit' || name === 'pos');
+  document.body.classList.toggle('training', name === 'train' || name === 'play' || name === 'edit' || name === 'pos' || name === 'thinkpos');
   const posTab = positionsUI ? positionsUI.tab() : null;
   $('tabMid').setAttribute('aria-selected', String(name === 'mid' || (name === 'pos' && posTab === 'mid')));
   $('tabEnd').setAttribute('aria-selected', String(name === 'end' || (name === 'pos' && posTab === 'end')));
@@ -361,6 +366,7 @@ function leaveModes() {
   if (openingsUI.isTraining()) openingsUI.exit(false);
   playUI.leave();
   positionsUI.leave();
+  thinkUI?.leave();
 }
 $('tabFree').onclick = () => { leaveModes(); showScreen('free'); };
 $('tabHome').onclick = () => overviewUI.enter();
@@ -397,6 +403,12 @@ positionsUI = initPositions({
   view, store, settings, Sound, toast, showScreen, setController, moveLabelOf, loadIntoFree,
   startPlay: (o) => playUI.startFrom(o),
 });
+
+thinkUI = initThink({
+  view, store, Sound, toast, showScreen, setController, moveLabelVN,
+  getOpenings: () => (openingsUI.ready() ? openingsUI.getOpenings() : []),
+});
+$('tabThink').onclick = () => { leaveModes(); thinkUI.enter(); };
 
 // ---------- Phím tắt (máy tính) ----------
 document.addEventListener('keydown', (e) => {
