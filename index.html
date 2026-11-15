@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Luyện Cờ Tướng</title>
+  <meta name="description" content="App luyện cờ tướng: khai cuộc, trung cuộc, tàn cuộc — chạy offline">
+  <meta name="theme-color" content="#8b2a1a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"><span>Luyện Cờ Tướng</span></div>
+    <div class="top-actions">
+      <button class="icon-btn" id="btnNew" title="Ván mới" aria-label="Ván mới">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">Ván mới</span>
+      </button>
+      <button class="icon-btn" id="btnFen" title="FEN: lưu / nạp thế cờ" aria-label="FEN">
+        <svg viewBox="0 0 24 24"><path d="M4 4h10l6 6v10H4z M14 4v6h6"/></svg><span class="lbl">FEN</span>
+      </button>
+      <button class="icon-btn" id="btnSettings" title="Cài đặt" aria-label="Cài đặt">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lbl">Cài đặt</span>
+      </button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Chế độ">
+    <button class="tab" role="tab" id="tabHome" data-tab="home" aria-selected="true">Tổng quan</button>
+    <button class="tab" role="tab" id="tabOpen" data-tab="openings" aria-selected="false">Khai cuộc</button>
+    <button class="tab" role="tab" id="tabMid" data-tab="mid" aria-selected="false">Trung cuộc</button>
+    <button class="tab" role="tab" id="tabEnd" data-tab="end" aria-selected="false">Tàn cuộc</button>
+    <button class="tab" role="tab" id="tabPlay" data-tab="play" aria-selected="false">Đánh với máy</button>
+    <button class="tab" role="tab" id="tabFree" data-tab="free" aria-selected="false">Bàn cờ</button>
+  </nav>
+
+  <!-- Màn hình Tổng quan (màn hình chính) -->
+  <section class="screen" id="screenHome">
+    <div class="home-grid">
+      <div class="card home-due">
+        <div class="card-head"><h2>Cần ôn hôm nay</h2><span class="muted small" id="hmDate"></span></div>
+        <div class="due-tiles">
+          <button class="due-tile" id="hmDueOpen"><span class="due-n" id="hmNOpen">–</span><span class="due-l">Khai cuộc</span><span class="due-s" id="hmSOpen"></span></button>
+          <button class="due-tile" id="hmDueMid"><span class="due-n" id="hmNMid">–</span><span class="due-l">Trung cuộc</span><span class="due-s" id="hmSMid"></span></button>
+          <button class="due-tile" id="hmDueEnd"><span class="due-n" id="hmNEnd">–</span><span class="due-l">Tàn cuộc</span><span class="due-s" id="hmSEnd"></span></button>
+        </div>
+        <p class="muted small" id="hmDueNote"></p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Chuỗi ngày luyện</h2><span class="pill" id="hmToday"></span></div>
+        <p class="streak"><b id="hmStreak">0</b> <span>ngày liên tiếp</span></p>
+        <div class="heat" id="hmHeat" aria-label="Số lần luyện 4 tuần gần nhất"></div>
+        <p class="muted small" id="hmTotals"></p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Tỉ lệ đúng theo khai cuộc</h2></div>
+        <ul class="bars" id="hmOpenings"></ul>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Thế cờ theo chủ đề</h2></div>
+        <ul class="bars" id="hmPositions"></ul>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Nước hay sai nhất</h2></div>
+        <ol class="worst" id="hmWorst"></ol>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Dữ liệu của anh</h2></div>
+        <p class="muted small">Tiến độ, ván đã lưu và các biến anh tự soạn chỉ lưu trên máy này. Xuất ra file để chuyển sang máy khác (máy tính ↔ điện thoại) hoặc cất dự phòng.</p>
+        <div class="row wrap">
+          <button class="btn primary" id="hmExport">Xuất dữ liệu (.json)</button>
+          <button class="btn" id="hmImport">Nhập dữ liệu</button>
+        </div>
+        <p class="muted small" id="hmDataNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Màn hình chọn khai cuộc -->
+  <section class="screen" id="screenOpenings" hidden>
+    <div class="op-head">
+      <div class="chips" role="group" aria-label="Lọc">
+        <button class="chip on" data-filter="all">Tất cả</button>
+        <button class="chip" data-filter="theory">Lý thuyết</button>
+        <button class="chip" data-filter="trap">Bẫy cổ điển</button>
+      </div>
+      <div class="row wrap">
+        <button class="btn" id="btnNewOpening">＋ Khai cuộc mới</button>
+        <button class="btn primary" id="btnReview">Ôn ngẫu nhiên <span class="badge" id="dueBadge"></span></button>
+      </div>
+    </div>
+    <p class="muted small op-note" id="opNote">Đang tải dữ liệu khai cuộc…</p>
+    <div id="opList" class="op-list"></div>
+  </section>
+
+  <!-- Màn hình danh sách thế cờ (Trung cuộc / Tàn cuộc) -->
+  <section class="screen" id="screenPositions" hidden>
+    <div class="op-head">
+      <div class="chips" role="group" aria-label="Nhóm" id="psKinds"></div>
+      <div class="row wrap">
+        <select id="psTheme" aria-label="Lọc chủ đề"></select>
+        <select id="psLevel" aria-label="Lọc độ khó">
+          <option value="0">Mọi độ khó</option><option value="1">★ Dễ</option><option value="2">★★ Vừa</option><option value="3">★★★ Khó</option>
+        </select>
+        <button class="btn primary" id="psReview">Cần ôn <span class="badge" id="psDue"></span></button>
+      </div>
+    </div>
+    <p class="muted small op-note" id="psNote">Đang tải dữ liệu thế cờ…</p>
+    <div id="psList" class="op-grid ps-grid"></div>
+  </section>
+
+  <main class="layout" id="screenBoard" hidden>
+    <section class="board-col">
+      <div class="status" id="status" aria-live="polite">Lượt: Đỏ</div>
+      <div class="board-box" id="board"></div>
+      <div class="controls">
+        <button class="ctl" id="btnStart" title="Về đầu (Home)" aria-label="Về đầu"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-8 6 8 6z"/></svg></button>
+        <button class="ctl" id="btnBack" title="Lùi (←)" aria-label="Lùi"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button class="ctl" id="btnFwd" title="Tiến (→)" aria-label="Tiến"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        <button class="ctl" id="btnEnd" title="Về cuối (End)" aria-label="Về cuối"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l8 6-8 6z"/></svg></button>
+        <span class="ctl-sep"></span>
+        <button class="ctl" id="btnFlip" title="Lật bàn (F)" aria-label="Lật bàn"><svg viewBox="0 0 24 24"><path d="M7 4v14l-3-3M17 20V6l3 3"/></svg></button>
+        <button class="ctl" id="btnSound" title="Âm thanh" aria-label="Bật/tắt âm thanh"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="snd-wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="snd-off" d="M16 9l5 6M21 9l-5 6"/></svg></button>
+        <button class="ctl" id="btnTheme" title="Sáng / tối" aria-label="Đổi giao diện sáng tối"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
+      </div>
+    </section>
+
+    <aside class="panel" id="panelFree">
+      <div class="card">
+        <div class="card-head">
+          <h2>Biên bản</h2>
+          <span class="muted" id="moveCount">0 nước</span>
+        </div>
+        <ol class="moves" id="moves"></ol>
+        <form class="move-input" id="moveForm" autocomplete="off">
+          <input id="moveText" placeholder="Nhập nước, VD: P2-5" aria-label="Nhập nước đi" enterkeyhint="go" autocapitalize="off" spellcheck="false">
+          <button type="submit">Đi</button>
+        </form>
+      </div>
+      <div class="card comment-card" id="freeCommentCard" hidden>
+        <h2 id="freeTitle">Chú thích</h2>
+        <p id="freeComment" class="comment"></p>
+      </div>
+      <div class="card soon" id="soonCard">
+        <h2>Mẹo</h2>
+        <p class="muted">Bàn cờ tự do: đi thử, nạp / lưu thế bằng FEN, xem lại biến khai cuộc. Tiến độ luyện tập xem ở tab Tổng quan.</p>
+      </div>
+    </aside>
+
+    <!-- Bảng soạn / sửa biến khai cuộc -->
+    <aside class="panel" id="panelEdit" hidden>
+      <div class="card">
+        <div class="card-head"><h2 id="edTitle">Sửa biến</h2><span class="muted small" id="edCount"></span></div>
+        <p class="muted small" id="edOpening"></p>
+        <label class="field"><span>Tên biến</span><input id="edName" maxlength="80" placeholder="VD: Đen tiến 3 tốt"></label>
+        <ol class="moves" id="edMoves"></ol>
+        <div class="row nav-row">
+          <button class="ctl" id="edFirst" aria-label="Về đầu"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-8 6 8 6z"/></svg></button>
+          <button class="ctl" id="edPrev" aria-label="Lùi"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <button class="ctl" id="edNext" aria-label="Tiến"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+          <button class="ctl" id="edLast" aria-label="Về cuối"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l8 6-8 6z"/></svg></button>
+          <button class="btn small-btn" id="edCut">Xóa các nước sau</button>
+        </div>
+        <label class="field"><span>Chú thích cho nước đang chọn</span><textarea id="edComment" rows="3"></textarea></label>
+        <label class="field"><span>Kế hoạch trung cuộc khi hết biến</span><textarea id="edPlan" rows="2"></textarea></label>
+        <p class="small muted" id="edEngine"></p>
+        <div class="row wrap">
+          <button class="btn" id="edCheck">Kiểm tra bằng engine</button>
+          <span class="grow"></span>
+          <button class="btn" id="edCancel">Hủy</button>
+          <button class="btn" id="edSaveNew">Lưu thành biến mới</button>
+          <button class="btn primary" id="edSave">Lưu</button>
+        </div>
+        <p class="muted small">Đi quân cho cả hai bên. Bấm vào một nước trong danh sách để quay lại; đi nước khác từ đó sẽ tạo nhánh mới (bỏ các nước sau).</p>
+      </div>
+    </aside>
+
+    <!-- Bảng đánh với máy -->
+    <aside class="panel" id="panelPlay" hidden>
+      <div class="card" id="playSetup">
+        <h2>Ván mới với máy</h2>
+        <div class="opt-group">
+          <span class="opt-label">Anh cầm</span>
+          <div class="seg" role="radiogroup" aria-label="Chọn bên">
+            <label><input type="radio" name="plSide" value="r" id="plSideR" checked><span>Đỏ — đi trước</span></label>
+            <label><input type="radio" name="plSide" value="b" id="plSideB"><span>Đen — đi sau</span></label>
+          </div>
+        </div>
+        <label class="set"><span>Cấp độ máy</span><select id="plLevel"></select></label>
+        <label class="set"><span>Thế bắt đầu</span>
+          <select id="plStart"><option value="start">Thế khởi đầu</option><option value="free">Thế đang xem ở Bàn cờ</option></select></label>
+        <label class="set chk"><input type="checkbox" id="plBook" checked><span>Máy đi theo sách khai cuộc (khi có)</span></label>
+        <div class="row"><span class="muted small" id="engineName"></span><span class="grow"></span><button class="btn primary" id="plGo">Bắt đầu</button></div>
+      </div>
+      <div class="card" id="playGame" hidden>
+        <div class="card-head"><h2 id="plTitle">Ván với máy</h2><span class="pill" id="plEval">±0.0</span></div>
+        <div class="feedback info" id="plStatus" aria-live="polite"></div>
+        <ol class="moves" id="plMoves"></ol>
+        <div class="row nav-row">
+          <button class="ctl" id="plFirst" aria-label="Về đầu"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 6l-8 6 8 6z"/></svg></button>
+          <button class="ctl" id="plPrev" aria-label="Lùi"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <button class="ctl" id="plNext" aria-label="Tiến"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+          <button class="ctl" id="plLast" aria-label="Về cuối"><svg viewBox="0 0 24 24"><path d="M18 5v14M6 6l8 6-8 6z"/></svg></button>
+        </div>
+        <p class="comment" id="plDetail"></p>
+        <div class="row wrap">
+          <button class="btn" id="plHint">Gợi ý</button>
+          <button class="btn" id="plUndo">Đi lại</button>
+          <button class="btn" id="plResign">Xin thua</button>
+          <button class="btn" id="plAnalyze">Phân tích ván</button>
+          <span class="grow"></span>
+          <button class="btn" id="plNew">Ván mới</button>
+        </div>
+      </div>
+      <div class="card" id="savedCard">
+        <div class="card-head"><h2>Ván đã lưu</h2><span class="muted small" id="savedCount"></span></div>
+        <ol class="saved" id="savedList"></ol>
+      </div>
+    </aside>
+
+    <!-- Bảng luyện khai cuộc (thay bảng biên bản khi đang luyện) -->
+    <aside class="panel" id="panelTrain" hidden>
+      <div class="card">
+        <div class="card-head">
+          <h2 id="trName">Khai cuộc</h2>
+          <span class="pill" id="trMode">Kiểm tra</span>
+        </div>
+        <p class="muted small" id="trMeta"></p>
+        <div class="feedback" id="trFeedback" aria-live="polite"></div>
+        <p class="comment" id="trComment"></p>
+        <p class="small eng-flag" id="trEngineWarn"></p>
+        <p class="tr-moves" id="trMoves"></p>
+        <div class="row wrap">
+          <button class="btn" id="trReveal">Xem nước đúng</button>
+          <button class="btn" id="trRestart">Luyện lại</button>
+          <span class="grow"></span>
+          <button class="btn" id="trExit">Về danh sách</button>
+        </div>
+      </div>
+      <div class="card" id="trEnd" hidden>
+        <h2>Hết biến</h2>
+        <p id="trSummary"></p>
+        <p class="comment" id="trPlan"></p>
+        <div class="row wrap">
+          <button class="btn primary" id="trAgain">Luyện tiếp</button>
+          <button class="btn" id="trNextReview">Ôn ngẫu nhiên</button>
+          <button class="btn" id="trToPlay">Đánh tiếp với máy</button>
+          <button class="btn" id="trToFree">Đi tiếp tự do</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bảng giải thế cờ -->
+    <aside class="panel" id="panelPos" hidden>
+      <div class="card">
+        <div class="card-head"><h2 id="pzTitle">Thế cờ</h2><span class="pill" id="pzKind"></span></div>
+        <p class="muted small" id="pzMeta"></p>
+        <p class="pz-goal" id="pzGoal"></p>
+        <div class="feedback" id="pzFeedback" aria-live="polite"></div>
+        <p class="comment" id="pzMethod"></p>
+        <p class="tr-moves" id="pzMoves"></p>
+        <div class="row wrap">
+          <button class="btn" id="pzHint">Gợi ý (1/3)</button>
+          <button class="btn" id="pzShow">Xem lời giải</button>
+          <button class="btn" id="pzRetry">Làm lại</button>
+          <button class="btn" id="pzFight">Đánh với máy</button>
+          <span class="grow"></span>
+          <button class="btn primary" id="pzNext">Thế tiếp</button>
+          <button class="btn" id="pzExit">Về danh sách</button>
+        </div>
+        <p class="muted small" id="pzSource"></p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Hộp thoại FEN -->
+  <dialog id="dlgFen" class="dlg">
+    <form method="dialog" class="dlg-body">
+      <h2>Thế cờ (FEN)</h2>
+      <textarea id="fenText" rows="3" spellcheck="false" aria-label="Chuỗi FEN"></textarea>
+      <p class="err" id="fenErr"></p>
+      <div class="row wrap">
+        <button type="button" class="btn" id="fenCopy">Sao chép</button>
+        <button type="button" class="btn" id="fenStart">Thế khởi đầu</button>
+        <button type="button" class="btn" id="fenEmpty">Chỉ còn 2 tướng</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" value="cancel" id="fenCancel">Đóng</button>
+        <button type="button" class="btn primary" id="fenLoad">Nạp thế này</button>
+      </div>
+      <p class="muted small">Nạp FEN sẽ bắt đầu ván mới từ thế đó. Hỗ trợ chuẩn UCCI/WXF (chữ n/h = mã, b/e = tượng; lượt w/r = Đỏ, b = Đen).</p>
+    </form>
+  </dialog>
+
+  <!-- Hộp thoại Cài đặt -->
+  <dialog id="dlgSettings" class="dlg">
+    <form method="dialog" class="dlg-body settings">
+      <h2>Cài đặt</h2>
+      <label class="set"><span>Chữ trên quân</span>
+        <select id="setPieces"><option value="han">Chữ Hán (帥 將 車…)</option><option value="viet">Chữ Việt (Tướng, Xe…)</option></select></label>
+      <label class="set"><span>Ký pháp</span>
+        <select id="setNotation"><option value="vn">Việt Nam (P2-5, M8.7)</option><option value="wxf">Quốc tế WXF (C2.5, H8+7)</option></select></label>
+      <label class="set"><span>Dấu "tiến" kiểu VN</span>
+        <select id="setAdvance"><option value=".">Dấu chấm: M8.7</option><option value="+">Dấu cộng: M8+7</option></select></label>
+      <label class="set"><span>Lặp thế 3 lần</span>
+        <select id="setRepeat"><option value="warn">Chỉ cảnh báo</option><option value="draw">Xử hòa</option></select></label>
+      <label class="set"><span>Giao diện</span>
+        <select id="setTheme"><option value="auto">Theo máy</option><option value="light">Sáng</option><option value="dark">Tối</option></select></label>
+      <label class="set"><span>Mạng NNUE cho engine</span>
+        <select id="setNnue"><option value="auto">Tự động (máy tính: bật, điện thoại: tắt)</option><option value="on">Bật — tải thêm ~11 MB, mạnh hơn</option><option value="off">Tắt — dùng đánh giá cổ điển</option></select></label>
+      <label class="set chk"><input type="checkbox" id="setLegal"><span>Hiện các nước đi hợp lệ</span></label>
+      <label class="set chk"><input type="checkbox" id="setSound"><span>Âm thanh</span></label>
+      <div class="row wrap"><button type="button" class="btn" id="setExport">Xuất dữ liệu</button><button type="button" class="btn" id="setImport">Nhập dữ liệu</button></div>
+      <div class="row"><span class="grow"></span><button class="btn primary" value="ok">Xong</button></div>
+      <p class="muted small" id="storageNote"></p>
+    </form>
+  </dialog>
+
+  <!-- Hộp thoại chọn cách luyện một khai cuộc -->
+  <dialog id="dlgOpening" class="dlg dlg-wide">
+    <form method="dialog" class="dlg-body">
+      <h2 id="opTitle">Khai cuộc</h2>
+      <p id="opSummary" class="muted"></p>
+      <div class="opt-group">
+        <span class="opt-label">Anh cầm</span>
+        <div class="seg" role="radiogroup" aria-label="Chọn bên">
+          <label><input type="radio" name="opSide" value="r" id="opSideR"><span>Đỏ — đi trước</span></label>
+          <label><input type="radio" name="opSide" value="b" id="opSideB"><span>Đen — đi sau</span></label>
+        </div>
+      </div>
+      <div class="opt-group">
+        <span class="opt-label">Chế độ</span>
+        <div class="seg" role="radiogroup" aria-label="Chế độ luyện">
+          <label><input type="radio" name="opMode" value="learn" id="opModeLearn"><span>Học mới (có gợi ý)</span></label>
+          <label><input type="radio" name="opMode" value="test" id="opModeTest"><span>Kiểm tra</span></label>
+        </div>
+      </div>
+      <details class="lines-box" id="opLinesBox">
+        <summary>Xem / sửa các biến (<span id="opLineCount">0</span>)</summary>
+        <div class="row wrap lines-tools">
+          <button type="button" class="btn small-btn" id="opAddLine">＋ Thêm biến</button>
+          <button type="button" class="btn small-btn" id="opReset" hidden>Khôi phục dữ liệu gốc</button>
+        </div>
+        <ol id="opLines" class="op-lines"></ol>
+      </details>
+      <p class="muted small" id="opSource"></p>
+      <div class="row"><span class="grow"></span>
+        <button class="btn" value="cancel">Đóng</button>
+        <button class="btn primary" value="start" id="opStart">Bắt đầu luyện</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Hộp thoại tạo khai cuộc mới -->
+  <dialog id="dlgNewOp" class="dlg">
+    <form method="dialog" class="dlg-body">
+      <h2>Khai cuộc mới</h2>
+      <label class="field"><span>Tên khai cuộc</span><input id="noName" maxlength="80" placeholder="VD: Pháo đầu đối Bình phong mã – biến của tôi"></label>
+      <div class="opt-group">
+        <span class="opt-label">Cho phép luyện cầm</span>
+        <label class="set chk"><input type="checkbox" id="noSideR" checked><span>Đỏ (đi trước)</span></label>
+        <label class="set chk"><input type="checkbox" id="noSideB" checked><span>Đen (đi sau)</span></label>
+      </div>
+      <label class="field"><span>Giới thiệu ngắn</span><textarea id="noSummary" rows="2"></textarea></label>
+      <p class="err" id="noErr"></p>
+      <div class="row"><span class="grow"></span>
+        <button class="btn" value="cancel">Hủy</button>
+        <button class="btn primary" value="ok" id="noOk">Tạo và soạn biến đầu tiên</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Hộp thoại xác nhận (thay cho window.confirm) -->
+  <dialog id="dlgConfirm" class="dlg">
+    <form method="dialog" class="dlg-body">
+      <h2 id="confirmTitle">Xác nhận</h2>
+      <p id="confirmText" class="muted"></p>
+      <div class="row"><span class="grow"></span>
+        <button class="btn" value="no">Hủy</button>
+        <button class="btn primary" value="yes" id="confirmYes">Đồng ý</button>
+      </div>
+    </form>
+  </dialog>
+
+  <input type="file" id="importFile" accept=".json,application/json" hidden>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
