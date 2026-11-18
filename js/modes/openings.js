@@ -197,8 +197,8 @@ export function initOpenings(ctx) {
     b.disabled = !op.sides.includes('b');
     const lastSide = store.getJSON('lastSide', 'r');
     (op.sides.includes(lastSide) ? (lastSide === 'r' ? r : b) : (op.sides[0] === 'r' ? r : b)).checked = true;
-    const lastMode = store.getJSON('lastMode', 'learn');
-    ({ test: $('opModeTest'), purpose: $('opModePurpose') }[lastMode] || $('opModeLearn')).checked = true;
+    const lastMode = store.getJSON('lastMode', 'auto');
+    ({ auto: $('opModeAuto'), learn: $('opModeLearn'), test: $('opModeTest'), purpose: $('opModePurpose') }[lastMode] || $('opModeAuto')).checked = true;
     const isBook = op.kind === 'book';
     $('opOppGroup').hidden = !isBook;
     $('opBookBox').hidden = !isBook;
@@ -259,6 +259,10 @@ export function initOpenings(ctx) {
     if (!$('dlgOpening').open) $('dlgOpening').showModal();
   }
 
+  // ---------- Chế độ đã chọn trong hộp thoại (dùng cho cả nút "Học" từng biến) ----------
+  function chosenMode() { return document.querySelector('input[name="opMode"]:checked')?.value || 'auto'; }
+  document.querySelectorAll('input[name="opMode"]').forEach((el) => el.addEventListener('change', () => store.setJSON('lastMode', chosenMode())));
+
   // ---------- Học theo biến ----------
   function currentSide(op) {
     const v = document.querySelector('input[name="opSide"]:checked')?.value;
@@ -303,7 +307,7 @@ export function initOpenings(ctx) {
       const badge = inf ? `<span class="gr gr-${inf.grade}">${GRADE_NAME[inf.grade]}</span>` : '';
       const games = inf?.games ? ` <span class="small">${inf.games} ván cao thủ</span>` : '';
       const onlyLink = !gAll.length && g.lines[0]?.link;
-      html += `<details class="plan-group"${g === nxtGroup ? ' open' : ''}><summary><b>${esc(g.vn ? g.label.replace(g.vn, ctx.moveLabelVN(g.vn)) : g.label)}</b> ${badge}${games}<span class="pl-reach">${g.reach !== undefined ? pct(g.reach) : ''}</span><span class="grow"></span><span class="small muted">${onlyLink ? '→ chương khác' : `thuộc ${gDone}/${gl.length}`}</span></summary>`;
+      html += `<details class="plan-group"${g === nxtGroup ? ' open' : ''}><summary><b>${esc(g.vn ? g.label.replace(g.vn, ctx.moveLabelVN(g.vn)) : g.label)}</b> ${badge}${games}<span class="pl-reach">${g.reach !== undefined ? pct(g.reach) : ''}</span><span class="grow"></span><span class="small muted">${onlyLink ? '→ chương khác' : gl.length ? `thuộc ${gDone}/${gl.length}` : 'chỉ có biến tùy chọn'}</span></summary>`;
       if (onlyLink) {
         html += `<p class="small">Nước này dẫn sang chương <b>${esc(g.lines[0].link.name)}</b>.</p><button type="button" class="btn small-btn" data-open="${esc(g.lines[0].link.id)}">Mở chương "${esc(g.lines[0].link.name)}" ▸</button>`;
       } else {
@@ -321,7 +325,7 @@ export function initOpenings(ctx) {
           }
           const dev = x.rank[0] > 0 ? Object.keys(GRADE_NAME)[x.rank[0] - 1] : null;
           const p = progOf(op, side, x.line.id);
-          html += `<li class="plan-line${cls}${p?.mastered ? ' done' : ''}${x.line.id === nxt ? ' cur' : ''}"${more ? ' hidden' : ''}>${stateHTML(p)}<span class="pl-name">${esc(shortName(x.line))}${dev ? ` <span class="gr gr-${dev}">${GRADE_NAME[dev]}</span>` : ' <span class="gr gr-main">Chính biến</span>'}${-x.rank[1] > 0 && dev ? ` <span class="small muted">${-x.rank[1]} ván</span>` : ''}${x.optional ? ' <span class="small muted">· tùy chọn</span>' : ''} <span class="pl-reach">${pct(x.reach ?? 1)}</span></span><span class="grow"></span><button type="button" class="btn small-btn" data-learn="${esc(x.line.id)}">Học</button></li>`;
+          html += `<li class="plan-line${cls}${p?.mastered ? ' done' : ''}${x.line.id === nxt ? ' cur' : ''}"${more ? ' hidden' : ''}>${stateHTML(p)}<span class="pl-name">${esc(shortName(x.line))}${dev ? ` <span class="gr gr-${dev}">${GRADE_NAME[dev]}</span>` : ' <span class="gr gr-main">Chính biến</span>'}${-x.rank[1] > 0 && dev ? ` <span class="small muted">${-x.rank[1]} ván</span>` : ''}${x.optional ? ' <span class="small muted">· tùy chọn</span>' : ''} <span class="pl-reach" title="${dev ? 'Xác suất gặp nhánh này khi đối phương rẽ khỏi lý thuyết' : 'Tỉ lệ trong các ván đi đúng lý thuyết'}">${dev ? pct(x.reach ?? 1) : pct(x.reach ?? 1).replace('gặp', 'nhánh lý thuyết')}</span></span><span class="grow"></span><button type="button" class="btn small-btn" data-learn="${esc(x.line.id)}">Học</button></li>`;
         }
         html += '</ol>';
         if (hidden) html += `<button type="button" class="btn small-btn plan-more">Xem thêm ${hidden} biến (nước ít quan trọng hơn) ▾</button> `;
@@ -335,7 +339,7 @@ export function initOpenings(ctx) {
     }
     box.innerHTML = html;
     box.querySelectorAll('.plan-more').forEach((b) => { b.onclick = () => { b.parentElement.querySelectorAll('.plan-line.more').forEach((li) => { li.hidden = false; }); b.remove(); }; });
-    box.querySelectorAll('[data-learn]').forEach((b) => { b.onclick = () => { $('dlgOpening').close('plan'); startLine(op, side, b.dataset.learn); }; });
+    box.querySelectorAll('[data-learn]').forEach((b) => { b.onclick = () => { const m = chosenMode(); $('dlgOpening').close('plan'); startLine(op, side, b.dataset.learn, m); }; });
     box.querySelectorAll('[data-group]').forEach((b) => { b.onclick = () => { $('dlgOpening').close('plan'); startGroup(op, side, b.dataset.group); }; });
     box.querySelectorAll('[data-open]').forEach((b) => {
       b.onclick = () => {
@@ -372,16 +376,16 @@ export function initOpenings(ctx) {
    */
   function runLine(op, side, lineId, forceMode = null) {
     const p = progOf(op, side, lineId);
-    const mode = forceMode || (p && p.runs ? 'test' : 'learn');
+    const mode = forceMode && forceMode !== 'auto' ? forceMode : (p && p.runs ? 'test' : 'learn');
     const nKey = keyCount(op, side, lineId);
     const keyOnly = mode === 'test' && !!store.getJSON('keyOnly', false) && !!p?.mastered && nKey > 0;
     start(op, side, mode, 'book', { lines: [lineId], focusLine: lineId, goal: mode === 'learn' && !p?.runs, keyOnly });
     const l = op.lines.find((x) => x.id === lineId);
-    toast(`${mode === 'learn' ? 'Học (có gợi ý)' : keyOnly ? `Ôn ${nKey} nước then chốt` : 'Kiểm tra'}: ${l ? shortName(l) : ''}`);
+    toast(`${mode === 'learn' ? 'Học (có gợi ý)' : mode === 'purpose' ? 'Đoán ý đồ' : keyOnly ? `Ôn ${nKey} nước then chốt` : 'Kiểm tra'}: ${l ? shortName(l) : ''}`);
   }
-  function startLine(op, side, lineId) {
+  function startLine(op, side, lineId, mode = 'auto') {
     session = { kind: 'line', op, side, lineId };
-    runLine(op, side, lineId);
+    runLine(op, side, lineId, mode);
   }
 
   // ---------- A3: Bài luyện hôm nay ----------
@@ -428,6 +432,13 @@ export function initOpenings(ctx) {
     $('opDailySum').textContent = `Bài hôm nay: ${rev} biến ôn${d.dueTotal > rev ? ` (còn ${d.dueTotal - rev} biến đến hạn để mai)` : ''} + ${neu} biến mới. Lộ trình: đã học ${learned}/${total}, thuộc ${mastered}/${total} biến.`;
   }
   $('btnDaily').onclick = () => startDaily();
+  /** Nhãn nút "Bài luyện hôm nay" ở Tổng quan */
+  function dailyLabel() {
+    if (!repChapters().length) return '▶ Bài luyện hôm nay — chọn bộ khai cuộc trước';
+    const d = todayPlan();
+    const rev = d.items.filter((i) => i.kind === 'review').length, neu = d.items.filter((i) => i.kind === 'new').length;
+    return d.items.length ? `▶ Bài luyện hôm nay: ${rev} biến ôn + ${neu} biến mới` : '✓ Đã xong bài luyện khai cuộc hôm nay';
+  }
 
   // ---------- A1: Bộ khai cuộc của anh ----------
   function openRepDialog() {
@@ -541,7 +552,8 @@ export function initOpenings(ctx) {
     if (!g) return;
     const gs = groupSet(g, lineProg, op, side);
     session = { kind: 'group', op, side, groupKey, focus: gs.focus };
-    start(op, side, 'test', 'book', { lines: gs.lines, focusLine: gs.focus });
+    const m = chosenMode();
+    start(op, side, m === 'auto' ? 'test' : m, 'book', { lines: gs.lines, focusLine: gs.focus });
   }
 
   // ---------- Cây book: duyệt các nước, đối phương xếp từ mạnh đến yếu ----------
@@ -663,9 +675,10 @@ export function initOpenings(ctx) {
   $('dlgOpening').addEventListener('close', () => {
     if ($('dlgOpening').returnValue !== 'start' || !selected) return;
     const side = document.querySelector('input[name="opSide"]:checked')?.value || selected.sides[0];
-    const mode = document.querySelector('input[name="opMode"]:checked')?.value || 'learn';
+    let mode = chosenMode();
     store.setJSON('lastSide', side);
-    store.setJSON('lastMode', mode);
+    // Tự động (luyện tổng hợp): chương chưa luyện thì Học có gợi ý, đã luyện thì Kiểm tra
+    if (mode === 'auto') mode = statsOf(selected).started ? 'test' : 'learn';
     const opp = selected.kind === 'book' ? (document.querySelector('input[name="opOpp"]:checked')?.value || 'book') : 'book';
     if (selected.kind === 'book') store.setJSON('lastOpp', opp);
     start(selected, side, mode, opp);
@@ -1079,9 +1092,14 @@ export function initOpenings(ctx) {
     saveCards();
     setTimeout(step, 1200);
   };
-  $('trRestart').onclick = () => (session ? $('trAgain').onclick() : lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle));
+  // "Luyện lại" giữa chừng: chạy lại đúng chế độ đang luyện
+  $('trRestart').onclick = () => {
+    if (!lastCfg) return;
+    if (session?.lineId && session.kind !== 'group') return runLine(session.op, session.side, session.lineId, lastCfg.mode);
+    start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle, lastCfg.scope);
+  };
   $('trAgain').onclick = () => {
-    if (session?.kind === 'line' || session?.kind === 'daily') return runLine(session.op, session.side, session.lineId);
+    if (session?.kind === 'line' || session?.kind === 'daily') return runLine(session.op, session.side, session.lineId, 'test');
     if (session?.kind === 'group') return startGroup(session.op, session.side, session.groupKey);
     if (lastCfg) start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
   };
@@ -1128,7 +1146,7 @@ export function initOpenings(ctx) {
     if (op) start(op, side || op.sides[0], mode);
   }
   return { load, renderList, isTraining: () => !!trainer, exit, getOpenings: () => openings, getEdits: () => edits,
-    getCards: () => cards, startReview, trainById, startDaily, ready: () => openings.length > 0 };
+    getCards: () => cards, startReview, trainById, startDaily, dailyLabel, ready: () => openings.length > 0 };
 }
 
 /**

@@ -67,15 +67,28 @@ export function childShares(op, node) {
   return new Map(kids.map((k, j) => [k.key, base[j] / sum]));
 }
 
-/** Xác suất gặp một biến khi anh cầm `side` (tích tỉ lệ ở các lượt đối phương có nhiều lựa chọn) */
+/**
+ * Xác suất gặp một biến khi anh cầm `side` (tích tỉ lệ ở các lượt đối phương có nhiều lựa chọn).
+ *  - Biến RẼ khỏi chính biến: xác suất thật để gặp — đối phương đi đúng lý thuyết tới chỗ rẽ rồi chọn nước rẽ
+ *    (rẽ càng muộn càng ít gặp => nhánh muộn, hiếm thành "tùy chọn").
+ *  - CHÍNH BIẾN (chỉ gồm nước lý thuyết): chỉ chia giữa các nhánh lý thuyết với nhau — "trong số các ván đi theo
+ *    lý thuyết, bao nhiêu phần đi vào biến này" — để chính biến không bị chia nhỏ thành "<1%".
+ */
 export function reachOf(op, side, line, memo = new Map()) {
+  const nodes = lineNodes(op, line);
+  const isSpine = (k) => { const i = op.info?.[k]; return !i || i.kind === 'spine'; };
+  const pureSpine = nodes.every((n) => isSpine(n.key));
   let p = 1;
-  for (const n of lineNodes(op, line)) {
+  for (const n of nodes) {
     const parentKey = n.key.split(' ').slice(0, -1).join(' ');
     const parent = op.nodes.get(parentKey);
     if (!parent || parent.children.length < 2 || sideToMoveAt(op, parent) === side) continue;
     if (!memo.has(parentKey)) memo.set(parentKey, childShares(op, parent));
-    p *= memo.get(parentKey).get(n.key) ?? 0;
+    const shares = memo.get(parentKey);
+    if (pureSpine) {
+      const spineSum = parent.children.filter(isSpine).reduce((a, k) => a + (shares.get(k) || 0), 0) || 1;
+      p *= (shares.get(n.key) ?? 0) / spineSum;
+    } else p *= shares.get(n.key) ?? 0;
   }
   return p;
 }
@@ -158,15 +171,23 @@ export function recordRun(prog, run, now = Date.now()) {
 /** Biến đã học (có tiến độ) và đến hạn ôn */
 export function isDue(p, now = Date.now()) { return !!p && p.runs > 0 && (p.due ?? 0) <= now; }
 
-/** Biến nên học tiếp: biến chưa thuộc đầu tiên theo thứ tự (ưu tiên cùng nhóm với biến vừa học) */
-export function nextLine(plan, progress, op, side, afterLineId = null) {
-  const done = (id) => progress[lineKey(op.id, side, id)]?.mastered;
+/**
+ * Biến nên học tiếp (theo thứ tự lộ trình, ưu tiên cùng nhóm với biến vừa học):
+ *  1) biến đang học dở và ĐẾN HẠN kiểm tra; 2) biến chưa học. Biến vừa kiểm tra đạt hôm nay
+ *  (phải chờ ngày mai mới tính tiếp) thì không gợi ý lại.
+ */
+export function nextLine(plan, progress, op, side, afterLineId = null, now = Date.now()) {
+  const pr = (id) => progress[lineKey(op.id, side, id)];
+  const ready = (id) => { const p = pr(id); if (p?.mastered) return false; return !p?.runs || isDue(p, now); };
+  const pick = (ids) => ids.find((id) => { const p = pr(id); return p?.runs && !p.mastered && isDue(p, now); })
+    || ids.find((id) => !pr(id)?.runs && !pr(id)?.mastered);
   if (afterLineId) {
     const g = plan.groups.find((x) => x.lines.some((y) => y.line.id === afterLineId));
-    const inGroup = g?.lines.find((y) => !y.link && !done(y.line.id));
-    if (inGroup) return inGroup.line.id;
+    const ids = (g?.lines || []).filter((y) => !y.link && !y.optional && y.line.id !== afterLineId).map((y) => y.line.id).filter(ready);
+    const inGroup = pick(ids);
+    if (inGroup) return inGroup;
   }
-  return plan.order.find((id) => !done(id)) || null;
+  return pick(plan.order.filter((id) => id !== afterLineId && ready(id))) || null;
 }
 
 /**

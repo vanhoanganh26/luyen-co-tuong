@@ -17,6 +17,9 @@ export function initOverview(ctx) {
     const oUI = ctx.openings(), pUI = ctx.positions();
     $('hmDate').textContent = new Date(now).toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'numeric' });
 
+    // ---- Bài luyện hôm nay (theo bộ khai cuộc của anh) ----
+    if (oUI.ready() && oUI.dailyLabel) $('hmDaily').textContent = oUI.dailyLabel();
+
     // ---- Khai cuộc ----
     const openings = oUI.ready() ? oUI.getOpenings() : [];
     const cards = oUI.getCards();

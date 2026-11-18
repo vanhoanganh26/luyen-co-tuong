@@ -394,20 +394,22 @@
           <label><input type="radio" name="opSide" value="b" id="opSideB"><span>Đen — đi sau</span></label>
         </div>
       </div>
+      <div class="opt-group">
+        <span class="opt-label">Chế độ (áp dụng cho cả nút "Học" từng biến lẫn Luyện tổng hợp)</span>
+        <div class="seg seg-4" role="radiogroup" aria-label="Chế độ luyện">
+          <label><input type="radio" name="opMode" value="auto" id="opModeAuto"><span>Tự động (đề xuất)</span></label>
+          <label><input type="radio" name="opMode" value="learn" id="opModeLearn"><span>Học (có gợi ý)</span></label>
+          <label><input type="radio" name="opMode" value="test" id="opModeTest"><span>Kiểm tra</span></label>
+          <label><input type="radio" name="opMode" value="purpose" id="opModePurpose"><span>Đoán ý đồ</span></label>
+        </div>
+        <p class="muted small" id="opModeHint">Tự động: biến chưa học thì xem đích đến rồi học có gợi ý; biến đã học thì Kiểm tra.</p>
+      </div>
       <details class="lines-box plan-box" id="opPlanBox" open>
         <summary>Học theo biến — chọn từng biến để học cho thuộc</summary>
         <label class="set chk small"><input type="checkbox" id="opKeyOnly"><span>Khi ôn biến <b>đã thuộc</b>: chỉ hỏi <b>nước then chốt</b>, nước thường app tự đi. Biến đang học thì anh vẫn tự đi mọi nước. Nước tương đương (kém nước tốt nhất không đáng kể) luôn được tính đúng.</span></label>
         <div id="opPlan"></div>
       </details>
       <h3 class="opt-sub">Luyện tổng hợp (máy chọn nhánh theo hạng / lịch ôn)</h3>
-      <div class="opt-group">
-        <span class="opt-label">Chế độ</span>
-        <div class="seg" role="radiogroup" aria-label="Chế độ luyện">
-          <label><input type="radio" name="opMode" value="learn" id="opModeLearn"><span>Học mới (có gợi ý)</span></label>
-          <label><input type="radio" name="opMode" value="test" id="opModeTest"><span>Kiểm tra</span></label>
-          <label><input type="radio" name="opMode" value="purpose" id="opModePurpose"><span>Đoán ý đồ</span></label>
-        </div>
-      </div>
       <div class="opt-group" id="opOppGroup" hidden>
         <span class="opt-label">Đối phương</span>
         <div class="seg" role="radiogroup" aria-label="Cách đối phương chọn nước">
