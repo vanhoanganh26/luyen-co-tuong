@@ -18,8 +18,9 @@ import { initOverview } from './modes/overview.js';
 import { initThink } from './modes/think.js';
 import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
+import { renderAfterOpening } from './modes/after-opening.js';
 
-export const APP_VERSION = '0.8.4';
+export const APP_VERSION = '0.8.5';
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,7 +55,7 @@ let ctl = null;
 const view = new BoardView($('board'), {
   canPick: (s) => {
     if (ctl) return ctl.canPick(s);
-    if (gameOver()) return false;
+    if (gameOver() || freeAo.preview) return false;
     const p = game.pos.board[s];
     return !!p && colorOf(p) === game.pos.turn;
   },
@@ -80,6 +81,29 @@ function playMove(m, animate = true) {
   return true;
 }
 
+// ---------- Bàn tự do: "Phân tích thế này: triển khai tiếp thế nào?" ----------
+// Nhận xét theo bên ở phía dưới bàn (lật bàn để xem cho bên kia).
+const freeAo = { token: 0, fen: null, preview: false };
+function closeFreePlan() { freeAo.token++; freeAo.fen = null; freeAo.preview = false; $('freePlanCard').hidden = true; }
+$('freePlanClose').onclick = () => { closeFreePlan(); refresh(); };
+$('freePlanBtn').onclick = () => {
+  if (ctl || game.pos.status().over) return;
+  const my = ++freeAo.token;
+  freeAo.fen = game.pos.fen();
+  freeAo.preview = false;
+  const me = view.flipped ? 'b' : 'r';
+  view.clearSelection();
+  $('freePlanCard').hidden = false;
+  $('freePlanNote').textContent = `Nhận xét theo bên ${SIDE[me]} (bên ở dưới bàn — lật bàn rồi bấm lại để xem cho bên kia).`;
+  renderAfterOpening($('freePlanBox'), {
+    fen: freeAo.fen, me, view, label: moveLabelVN, engine,
+    title: 'Triển khai tiếp thế nào?', backLabel: 'Về thế đang xem',
+    isActive: () => !ctl && freeAo.token === my && !$('panelFree').hidden,
+    onPreview: (on) => { freeAo.preview = on; if (!on) refresh(); },
+  });
+  $('freePlanCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 // ---------- Hiển thị ----------
 const SIDE = { r: 'Đỏ', b: 'Đen' };
 
@@ -91,6 +115,8 @@ function moveLabel(e) {
 function refresh(animate = null) {
   if (ctl) return; // đang luyện: bàn cờ do chế độ luyện vẽ
   const pos = game.pos;
+  if (freeAo.fen && freeAo.fen !== pos.fen()) closeFreePlan(); // đã sang thế khác
+  $('freePlanBtn').disabled = pos.status().over;
   const st = pos.status({ repetitionRule: settings.repetitionRule });
   const checkSq = st.inCheck ? pos.kingSq(pos.turn) : -1;
   view.render({ board: pos.board, last: game.lastMove(), checkSq, animate });
@@ -338,6 +364,7 @@ let thinkUI = null;
 function showScreen(name) {
   // name: 'home' | 'free' | 'openings' | 'train' | 'play' | 'edit' | 'mid' | 'end' (danh sách thế cờ) | 'pos' (đang giải)
   const listScreen = name === 'mid' || name === 'end';
+  closeFreePlan(); // đổi màn hình => đóng phân tích của bàn tự do
   $('screenHome').hidden = name !== 'home';
   $('screenOpenings').hidden = name !== 'openings';
   $('screenThink').hidden = name !== 'think';

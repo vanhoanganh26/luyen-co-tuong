@@ -264,7 +264,8 @@ h2 { font-size: 16px; margin: 0; }
 /* ---------- Máy tính: bàn cờ một bên, bảng một bên ---------- */
 @media (min-width: 900px) {
   .layout { flex-direction: row; align-items: flex-start; justify-content: center; gap: 20px; padding: 16px; }
-  .board-col { flex: 0 1 auto; }
+  /* Bàn cờ đứng yên khi cuộn bảng bên phải (đọc phân tích dài vẫn thấy bàn) */
+  .board-col { flex: 0 1 auto; position: sticky; top: 112px; }
   .board-box { width: min(640px, calc((100dvh - 200px) * 0.844)); }
   .panel { width: 340px; flex: 0 0 340px; margin: 0; }
   .moves { max-height: calc(100dvh - 330px); }

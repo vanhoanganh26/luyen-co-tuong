@@ -12,6 +12,7 @@ import { engine } from '../engine/client.js';
 import { LEVELS } from '../engine/search.js';
 import { logActivity } from '../train/progress.js';
 import { analyzeGame } from '../engine/analysis.js';
+import { renderAfterOpening } from './after-opening.js';
 
 const $ = (id) => document.getElementById(id);
 const SIDE = { r: 'Đỏ', b: 'Đen' };
@@ -28,6 +29,9 @@ export function initPlay(ctx) {
   let savedId = null;
   let lastEval = null;        // điểm gần nhất (góc nhìn Đỏ)
   let active = false;         // màn hình Đánh với máy đang hiển thị (đang giữ bàn cờ)
+  let aoToken = 0;            // lần mở "Triển khai tiếp?" gần nhất (để bỏ kết quả cũ)
+  let aoFen = null;           // thế đang được phân tích
+  let aoPreview = false;      // đang xem diễn biến gợi ý trên bàn => tạm khóa đi quân
 
   // ---------- Chuẩn bị giao diện ----------
   const sel = $('plLevel');
@@ -68,6 +72,7 @@ export function initPlay(ctx) {
   // ---------- Bắt đầu ván ----------
   function newGame(startFen, moves = [], side, level, book) {
     cfg = { side, level, book };
+    closePlan();
     game = new Game(startFen);
     for (const iccs of moves) game.play(parseCoordMove(iccs));
     state = 'play'; result = null; analysis = null; savedId = null; lastEval = null;
@@ -168,7 +173,7 @@ export function initPlay(ctx) {
   // ---------- Bộ điều khiển bàn cờ ----------
   const controller = {
     canPick(s) {
-      if (state !== 'play' || thinking || !atEnd() || !userTurn()) return false;
+      if (state !== 'play' || thinking || aoPreview || !atEnd() || !userTurn()) return false;
       const p = game.pos.board[s];
       return !!p && colorOf(p) === cfg.side;
     },
@@ -193,6 +198,7 @@ export function initPlay(ctx) {
 
   function render(animate = null) {
     if (!game || !active) return;
+    if (aoFen && aoFen !== game.pos.fen()) closePlan(); // đã sang thế khác => phân tích cũ hết hiệu lực
     const pos = game.pos;
     const checkSq = pos.inCheck() ? pos.kingSq(pos.turn) : -1;
     view.render({ board: pos.board, last: game.lastMove(), checkSq, animate });
@@ -214,6 +220,7 @@ export function initPlay(ctx) {
     $('plResign').disabled = state !== 'play';
     $('plAnalyze').disabled = state === 'analyzing' || game.moves.length < 2;
     $('plAnalyze').textContent = analysis ? 'Phân tích lại' : 'Phân tích ván';
+    $('plPlanBtn').disabled = state === 'analyzing' || thinking || game.pos.status().over;
     renderMoves();
     renderDetail();
   }
@@ -320,6 +327,7 @@ export function initPlay(ctx) {
     engine.stop();
     if (state === 'play' && game.moves.length) save();
     state = 'idle'; thinking = false;
+    closePlan();
     view.setHint(null);
     $('playSetup').hidden = false;
     $('playGame').hidden = true;
@@ -351,6 +359,26 @@ export function initPlay(ctx) {
       render();
       if (e.message !== 'cancelled') toast('Phân tích lỗi: ' + e.message);
     }
+  };
+
+  // ---------- Triển khai tiếp? (phân tích thế đang xem: điểm yếu, kế hoạch, 3 hướng đi của engine) ----------
+  function closePlan() { aoToken++; aoFen = null; aoPreview = false; $('plPlanCard').hidden = true; }
+  $('plPlanClose').onclick = () => { closePlan(); render(); };
+  $('plPlanBtn').onclick = () => {
+    if (!game || game.pos.status().over) return;
+    const my = ++aoToken;
+    aoFen = game.pos.fen();
+    aoPreview = false;
+    view.setHint(null);
+    $('plPlanCard').hidden = false;
+    $('plPlanNote').textContent = `Thế sau ${game.ply} nước — nhận xét theo bên anh (${SIDE[cfg.side]}).`;
+    renderAfterOpening($('plPlanBox'), {
+      fen: aoFen, me: cfg.side, view, label: ctx.moveLabelVN, engine,
+      title: 'Triển khai tiếp thế nào?', backLabel: 'Về thế đang xem',
+      isActive: () => active && aoToken === my,
+      onPreview: (on) => { aoPreview = on; if (!on) render(); },
+    });
+    $('plPlanCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   // ---------- Lưu ván ----------
@@ -393,6 +421,7 @@ export function initPlay(ctx) {
   const CLS_BY_KEY = { blunder: { key: 'blunder', sym: '??', name: 'Hớ' }, mistake: { key: 'mistake', sym: '?', name: 'Sai lầm' }, inaccuracy: { key: 'inaccuracy', sym: '?!', name: 'Không chính xác' } };
   function openSaved(g) {
     cfg = { side: g.side, level: g.level, book: false };
+    closePlan();
     game = new Game(g.startFen);
     for (const iccs of g.moves) game.play(parseCoordMove(iccs));
     game.goto(0);
@@ -417,7 +446,7 @@ export function initPlay(ctx) {
     if (game && state !== 'idle') { ctx.setController(controller); if (view.flipped !== (cfg.side === 'b')) view.setFlipped(cfg.side === 'b'); render(); maybeEngineMove(); }
     else { $('playSetup').hidden = false; $('playGame').hidden = true; ctx.setController(controller); view.render({ board: new Position().board, last: null, checkSq: -1 }); }
   }
-  function leave() { if (!active) return; active = false; engine.stop(); thinking = false; view.setHint(null); ctx.setController(null); }
+  function leave() { if (!active) return; closePlan(); active = false; engine.stop(); thinking = false; view.setHint(null); ctx.setController(null); }
 
   return { enter, leave, startFrom, isActive: () => state !== 'idle' };
 }

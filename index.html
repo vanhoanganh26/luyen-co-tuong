@@ -151,6 +151,11 @@
           <input id="moveText" placeholder="Nhập nước, VD: P2-5" aria-label="Nhập nước đi" enterkeyhint="go" autocapitalize="off" spellcheck="false">
           <button type="submit">Đi</button>
         </form>
+        <div class="row wrap"><button class="btn" id="freePlanBtn">🧭 Phân tích thế này: triển khai tiếp thế nào?</button></div>
+      </div>
+      <div class="card ao-card" id="freePlanCard" hidden>
+        <div class="row"><span class="muted small" id="freePlanNote"></span><span class="grow"></span><button class="btn" id="freePlanClose">Đóng</button></div>
+        <div id="freePlanBox"></div>
       </div>
       <div class="card comment-card" id="freeCommentCard" hidden>
         <h2 id="freeTitle">Chú thích</h2>
@@ -223,9 +228,14 @@
           <button class="btn" id="plUndo">Đi lại</button>
           <button class="btn" id="plResign">Xin thua</button>
           <button class="btn" id="plAnalyze">Phân tích ván</button>
+          <button class="btn" id="plPlanBtn">🧭 Triển khai tiếp?</button>
           <span class="grow"></span>
           <button class="btn" id="plNew">Ván mới</button>
         </div>
+      </div>
+      <div class="card ao-card" id="plPlanCard" hidden>
+        <div class="row"><span class="muted small" id="plPlanNote"></span><span class="grow"></span><button class="btn" id="plPlanClose">Đóng</button></div>
+        <div id="plPlanBox"></div>
       </div>
       <div class="card" id="savedCard">
         <div class="card-head"><h2>Ván đã lưu</h2><span class="muted small" id="savedCount"></span></div>

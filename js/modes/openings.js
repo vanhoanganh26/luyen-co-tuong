@@ -40,10 +40,8 @@ export function initOpenings(ctx) {
   function rebuild() {
     openings = applyEdits(baseData.openings, edits);
     const all = openings.flatMap((o) => o.lines);
-    const ok = all.filter((l) => l.verification?.engine === 'đạt').length;
-    const checked = all.filter((l) => l.verification?.engine && l.verification.engine !== 'chưa kiểm định').length;
     const mine = all.filter((l) => l.userEdited || l.userAdded).length;
-    $('opNote').textContent = `${openings.length} mẫu khai cuộc, ${all.length} biến${mine ? ` (${mine} biến anh soạn/sửa)` : ''}. Fairy-Stockfish đã chấm ${checked} biến: ${ok} đạt, ${checked - ok} cần xem lại.`;
+    $('opNote').textContent = `${openings.length} mẫu khai cuộc, ${all.length} biến${mine ? ` (${mine} biến anh soạn/sửa)` : ''}. ` + verifySummary(openings);
   }
 
   // ---------- Nạp dữ liệu ----------
@@ -595,4 +593,28 @@ export function initOpenings(ctx) {
   }
   return { load, renderList, isTraining: () => !!trainer, exit, getOpenings: () => openings, getEdits: () => edits,
     getCards: () => cards, startReview, trainById, ready: () => openings.length > 0 };
+}
+
+/**
+ * Tóm tắt kiểm định theo từng nhóm (biến lý thuyết / diễn biến bẫy cổ điển),
+ * ghi đúng tên engine đã chấm mỗi nhóm (lấy từ dữ liệu, không ghi cứng).
+ */
+export function verifySummary(openings) {
+  const groups = [
+    { kind: 'theory', label: 'biến lý thuyết', ok: 'đạt', bad: 'cần xem lại' },
+    // Bẫy cổ điển cố ý có nước hớ của bên mắc bẫy nên engine hay gắn cờ — chỉ để tham khảo
+    { kind: 'trap', label: 'diễn biến bẫy cổ điển', ok: 'hợp lý', bad: 'bị engine gắn cờ' },
+  ];
+  const parts = [];
+  for (const g of groups) {
+    const lines = openings.filter((o) => (g.kind === 'trap' ? o.kind === 'trap' : o.kind !== 'trap')).flatMap((o) => o.lines);
+    if (!lines.length) continue;
+    const checked = lines.filter((l) => l.verification?.engine && l.verification.engine !== 'chưa kiểm định');
+    const ok = checked.filter((l) => l.verification.engine === 'đạt').length;
+    const names = [...new Set(checked.map((l) => l.verification.engineName).filter(Boolean))];
+    const by = names.length ? names.join(' + ') : 'engine';
+    const unchecked = lines.length - checked.length;
+    parts.push(`${lines.length} ${g.label}: ${by} chấm ${ok} ${g.ok}, ${checked.length - ok} ${g.bad}${unchecked ? `, ${unchecked} chưa kiểm định` : ''}`);
+  }
+  return parts.join(' · ') + '.';
 }

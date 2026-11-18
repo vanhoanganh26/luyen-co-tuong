@@ -66,8 +66,9 @@ export class FsfBackend {
   }
 
   /**
-   * opts: { movetime, depth, skill (0–20), onInfo }
+   * opts: { movetime, depth, skill (0–20), multipv (số hướng đi, mặc định 1), onInfo }
    * Trả về cùng định dạng engine JS: { move (ICCS), score (cp, góc nhìn bên đi), depth, pv, mate }
+   * + lines: [{ score, pv, mate }] khi multipv > 1 (xếp theo thứ hạng của engine)
    */
   async search(fen, history, opts = {}) {
     // Fairy-Stockfish nhận FEN thế gốc + danh sách nước (để tự phát hiện lặp)
@@ -75,6 +76,9 @@ export class FsfBackend {
     const moves = (history || []).map(iccsToUci).join(' ');
     // Lịch sử đã được áp vào `fen`? Ở app ta luôn gửi FEN thế gốc + history.
     this.sf.postMessage(`setoption name Skill Level value ${opts.skill ?? 20}`);
+    const multi = Math.max(1, Math.min(5, opts.multipv || 1));
+    this.sf.postMessage(`setoption name MultiPV value ${multi}`);
+    const lines = [];
     this.sf.postMessage(`position fen ${start.fen()}${moves ? ' moves ' + moves : ''}`);
     let last = { move: null, score: 0, depth: 0, pv: [], mate: 0 };
     const done = new Promise((resolve) => {
@@ -82,13 +86,17 @@ export class FsfBackend {
         if (line.startsWith('info') && line.includes(' pv ')) {
           const d = / depth (\d+)/.exec(line), cp = / score cp (-?\d+)/.exec(line), mt = / score mate (-?\d+)/.exec(line);
           const pv = line.split(' pv ')[1].trim().split(/\s+/).map(uciToIccs);
-          last = { move: pv[0], depth: d ? +d[1] : 0, pv, mate: mt ? +mt[1] : 0, score: mt ? Math.sign(+mt[1]) * (30000 - Math.abs(+mt[1]) * 2) : cp ? +cp[1] : 0 };
-          opts.onInfo?.(last);
+          const k = / multipv (\d+)/.exec(line);
+          const rank = k ? +k[1] : 1;
+          const info = { move: pv[0], depth: d ? +d[1] : 0, pv, mate: mt ? +mt[1] : 0, score: mt ? Math.sign(+mt[1]) * (30000 - Math.abs(+mt[1]) * 2) : cp ? +cp[1] : 0 };
+          lines[rank - 1] = { score: info.score, pv: info.pv, mate: info.mate };
+          if (rank === 1) { last = info; opts.onInfo?.(last); }
         } else if (line.startsWith('bestmove')) {
           this.listeners.delete(fn);
           const bm = line.split(/\s+/)[1];
           if (bm && bm !== '(none)') last.move = uciToIccs(bm);
           else last.move = null;
+          if (multi > 1) last.lines = lines.filter(Boolean);
           resolve(last);
         }
       };

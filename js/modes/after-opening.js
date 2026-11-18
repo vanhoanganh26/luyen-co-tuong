@@ -30,14 +30,18 @@ export function loadPlans() {
 
 /**
  * Hiện phân tích vào phần tử `box`.
- * opts: { fen, me, view, label (đổi ký pháp), engine (engine của app), isActive: () => bool, onLeaveBoard }
+ * opts: { fen, me, view, label (đổi ký pháp), engine (engine của app), isActive: () => bool,
+ *         title?, backLabel? (chữ nút quay về thế gốc), onPreview?(bool) (đang xem diễn biến trên bàn) }
  */
 export async function renderAfterOpening(box, opts) {
   const { fen, me, view, label } = opts;
+  const title = opts.title || 'Sau khai cuộc: triển khai tiếp thế nào?';
+  const backLabel = opts.backLabel || 'Về thế cuối biến';
+  const onPreview = opts.onPreview || (() => {});
   const pos = new Position(fen);
   const a = analyzeAfterOpening(fen, me);
   const turnTxt = pos.turn === me ? 'Đến lượt anh đi.' : `Đến lượt ${SIDE[pos.turn]} (đối phương) đi — hãy đoán trước đối phương sẽ làm gì.`;
-  box.innerHTML = `<h3 class="ao-h">Sau khai cuộc: triển khai tiếp thế nào?</h3>
+  box.innerHTML = `<h3 class="ao-h">${esc(title)}</h3>
     <p class="ao-eval" id="aoEval">Đang lấy đánh giá của engine… ${esc(turnTxt)}</p>
     <h4 class="ao-sub">🎯 Điểm yếu của đối phương để khai thác</h4>
     <ul class="ao-list">${a.opp.length ? a.opp.map((x, i) => `<li class="lv${x.level}" data-o="${i}">${esc(x.text)}</li>`).join('') : '<li>Đối phương chưa lộ điểm yếu rõ — tập trung cải thiện quân của mình.</li>'}</ul>
@@ -47,7 +51,7 @@ export async function renderAfterOpening(box, opts) {
     <ul class="ao-list">${a.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
     <div id="aoPlans"><p class="muted small">Đang tìm các hướng đi tốt nhất…</p></div>
     <div class="ao-pv" id="aoPv" hidden>
-      <div class="row wrap"><button class="btn" id="aoPrev">◂</button><span class="ao-step" id="aoStep"></span><button class="btn" id="aoNext">▸</button><span class="grow"></span><button class="btn" id="aoBack">Về thế cuối biến</button></div>
+      <div class="row wrap"><button class="btn" id="aoPrev">◂</button><span class="ao-step" id="aoStep"></span><button class="btn" id="aoNext">▸</button><span class="grow"></span><button class="btn" id="aoBack">${esc(backLabel)}</button></div>
       <div class="why-body" id="aoWhy"></div>
     </div>
     <p class="muted small">Điểm yếu, điểm cần giữ và gợi ý do app tự rút ra từ hình cờ theo luật (kiểm chứng được trên bàn); các hướng đi là của engine. Đây là gợi ý để luyện tư duy, không phải lời bình của sách.</p>`;
@@ -64,12 +68,17 @@ export async function renderAfterOpening(box, opts) {
   let src = data.engine ? `${data.engine}, độ sâu ${data.depth}` : '';
   if (!plan && opts.engine) {
     try {
-      const r = await opts.engine.search(fen, [], { movetime: 2500 });
+      const r = await opts.engine.search(fen, [], { movetime: 2500, multipv: 3 });
       if (!opts.isActive()) return;
-      const p = new Position(fen), vn = [];
-      for (const m of r.pv.slice(0, 10)) { const mv = parseCoordMove(m); if (!p.isLegal(mv)) break; vn.push(moveToNotation(p, mv)); p.makeMove(mv); }
-      plan = { eval: r.score, turn: pos.turn, lines: [{ score: r.score, pv: r.pv.slice(0, vn.length), vn }] };
-      src = `${opts.engine.name || 'engine trong app'}, 2,5 giây`;
+      // Đổi diễn biến (ICCS) sang ký pháp Việt, cắt ở nước không hợp lệ (phòng hờ)
+      const toLine = (l) => {
+        const p = new Position(fen), vn = [];
+        for (const m of l.pv.slice(0, 10)) { const mv = parseCoordMove(m); if (!p.isLegal(mv)) break; vn.push(moveToNotation(p, mv)); p.makeMove(mv); }
+        return { score: l.score, pv: l.pv.slice(0, vn.length), vn };
+      };
+      const lines = (r.lines && r.lines.length ? r.lines : [{ score: r.score, pv: r.pv }]).map(toLine).filter((l) => l.pv.length);
+      plan = { eval: r.score, turn: pos.turn, lines };
+      src = `${opts.engine.name || 'engine trong app'}, 2,5 giây${lines.length < 3 ? '' : ', 3 hướng'}`;
     } catch { /* engine bận / lỗi: bỏ qua phần số liệu */ }
   }
   const evalEl = box.querySelector('#aoEval');
@@ -99,7 +108,7 @@ export async function renderAfterOpening(box, opts) {
     const last = cur.i ? parseCoordMove(l.pv[cur.i - 1]) : null;
     view.setHint(null);
     view.render({ board: p.board, last, checkSq: p.inCheck() ? p.kingSq(p.turn) : -1, animate: fwd ? last : null });
-    box.querySelector('#aoStep').textContent = cur.i ? `Hướng ${cur.line + 1} — nước ${cur.i}/${l.pv.length}: ${label(l.vn[cur.i - 1])}` : `Hướng ${cur.line + 1} — thế cuối biến`;
+    box.querySelector('#aoStep').textContent = cur.i ? `Hướng ${cur.line + 1} — nước ${cur.i}/${l.pv.length}: ${label(l.vn[cur.i - 1])}` : `Hướng ${cur.line + 1} — ${backLabel.replace(/^Về /, '')}`;
     if (cur.i) {
       const q = new Position(fen);
       for (const m of l.pv.slice(0, cur.i - 1)) q.makeMove(parseCoordMove(m));
@@ -107,6 +116,7 @@ export async function renderAfterOpening(box, opts) {
     } else box.querySelector('#aoWhy').innerHTML = '<p class="small">Bấm ▸ để xem từng nước của hướng này kèm giải thích.</p>';
     box.querySelector('#aoPrev').disabled = cur.i === 0;
     box.querySelector('#aoNext').disabled = cur.i >= l.pv.length;
+    onPreview(cur.i > 0);
   };
   box.querySelectorAll('.ao-play').forEach((b) => {
     b.onclick = () => { cur = { line: +b.dataset.i, i: 1 }; box.querySelector('#aoPv').hidden = false; show(); box.querySelector('#aoPv').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };

@@ -100,8 +100,14 @@ export class EngineClient {
       } else o = { depth: L.depth, movetime: Math.min(maxTime, L.movetime), noise: L.noise };
     } else o = { depth: opts.depth, movetime: Math.min(maxTime, opts.movetime ?? 800) };
     o.onInfo = opts.onInfo;
-    const r = await this.backend.search(fen, history, o);
-    return { ...r, engine: this.backend.name };
+    if (opts.multipv) o.multipv = opts.multipv; // chỉ Fairy-Stockfish hỗ trợ; engine JS bỏ qua
+    // Xếp hàng: mỗi lúc chỉ một lệnh tìm chạy trên engine (Fairy-Stockfish không chạy song song được).
+    // VD: đang phân tích "Triển khai tiếp?" mà máy cần đi thì nước của máy chờ phân tích xong.
+    const backend = this.backend;
+    const run = (this._queue || Promise.resolve()).then(() => backend.search(fen, history, o));
+    this._queue = run.catch(() => {});
+    const r = await run;
+    return { ...r, engine: backend.name };
   }
 
   stop() { this.backend?.stop(); }
