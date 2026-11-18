@@ -495,3 +495,4 @@ body.training #btnStart, body.training #btnBack, body.training #btnFwd, body.tra
 .ao-plan .btn { justify-self: start; height: 36px; }
 .ao-pv { border: 1px solid var(--accent); border-radius: 12px; padding: 8px; margin: 8px 0; }
 .ao-step { font-weight: 700; font-size: 14px; }
+.feedback .ao-jump { margin-top: 8px; height: auto; min-height: 40px; white-space: normal; }

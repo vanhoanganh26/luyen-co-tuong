@@ -5,6 +5,7 @@
 // - "Kiểm tra bằng engine": chấm từng nước, nước nào kém quá 0.8 thì đánh dấu
 // - Lưu (ghi đè) hoặc Lưu thành biến mới
 // =====================================================================
+import { revealInList } from '../ui/reveal.js';
 import { Game } from '../core/game.js';
 import { parseCoordMove, colorOf, RED, Position } from '../core/xiangqi.js';
 import { checkLine } from '../train/opening-tree.js';
@@ -103,7 +104,7 @@ export function initEditor(ctx) {
       }
       ol.appendChild(li);
     }
-    curBtn?.scrollIntoView({ block: 'nearest' });
+    revealInList(curBtn);
     // Chú thích của nước đang chọn
     const e = game.lastMove();
     $('edComment').disabled = !e;

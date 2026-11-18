@@ -473,16 +473,18 @@ export function initOpenings(ctx) {
     if (purpose) {
       $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: anh đoán đúng ý đồ ${quizScore.right}/${quizScore.total} nước.`;
       $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc (soạn sẵn): ' + line.plan : '';
-      setFeedback(quizScore.right === quizScore.total ? 'ok' : 'warn', 'Hết biến. Xem lại các nước đoán sai bằng nút "Luyện lại".');
+      setFeedback(quizScore.right === quizScore.total ? 'ok' : 'warn', 'Hết biến. Xem lại các nước đoán sai bằng nút "Luyện lại".' + AO_LINK);
       Sound.end();
       return;
     }
     $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: đúng ngay ${t.score.correct}/${total}, đúng ở lần 2: ${t.score.retry}, sai: ${t.score.wrong}.`;
     $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc (soạn sẵn): ' + line.plan : '';
-    setFeedback(t.score.wrong ? 'warn' : 'ok', t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!');
+    setFeedback(t.score.wrong ? 'warn' : 'ok', (t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!') + AO_LINK);
     Sound.end();
   }
 
+  // Nút nhảy tới phần phân tích (nằm ở thẻ "Hết biến" bên dưới)
+  const AO_LINK = '<br><button type="button" class="btn primary ao-jump" onclick="document.getElementById(\'trEnd\').scrollIntoView({behavior:\'smooth\',block:\'start\'})">▸ Xem phân tích: triển khai tiếp thế nào?</button>';
   /** Phân tích "sau khai cuộc" ở thế cuối biến */
   function showAnalysis(t) {
     const box = $('trAnalysis');

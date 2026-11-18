@@ -2,6 +2,7 @@
 // ỨNG DỤNG CHÍNH: bàn cờ tự do + luyện khai cuộc
 // Nối các phần: luật (core) <-> bàn cờ (ui) <-> lưu trữ (storage)
 // =====================================================================
+import { revealInList } from './ui/reveal.js';
 import { Position, START_FEN, RED, colorOf } from './core/xiangqi.js';
 import { parseNotation } from './core/notation.js';
 import { Game } from './core/game.js';
@@ -18,7 +19,7 @@ import { initThink } from './modes/think.js';
 import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 
-export const APP_VERSION = '0.8.1';
+export const APP_VERSION = '0.8.3';
 
 const $ = (id) => document.getElementById(id);
 
@@ -160,7 +161,7 @@ function renderMoves() {
     }
     ol.appendChild(li);
   }
-  curBtn?.scrollIntoView({ block: 'nearest' });
+  revealInList(curBtn);
 }
 
 /** Chú thích của nước đang xem (khi xem lại một biến khai cuộc) */

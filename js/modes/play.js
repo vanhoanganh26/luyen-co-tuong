@@ -4,6 +4,7 @@
 // - Gợi ý, đi lại, xin thua; hết ván tự lưu
 // - Phân tích: engine chấm từng nước, đánh dấu ?! / ? / ?? và gợi ý nước tốt hơn
 // =====================================================================
+import { revealInList } from '../ui/reveal.js';
 import { Position, START_FEN, parseCoordMove, colorOf, RED } from '../core/xiangqi.js';
 import { moveToNotation } from '../core/notation.js';
 import { Game } from '../core/game.js';
@@ -242,7 +243,7 @@ export function initPlay(ctx) {
       }
       ol.appendChild(li);
     }
-    cur?.scrollIntoView({ block: 'nearest' });
+    revealInList(cur);
   }
 
   /** Ghi chú cho nước đang xem (sau khi phân tích) */
