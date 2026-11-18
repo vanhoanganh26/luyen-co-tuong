@@ -897,6 +897,8 @@ export function initOpenings(ctx) {
     const t = trainer;
     if (t.isEnd()) return finish();
     if (t.isUserTurn()) {
+      // Mỗi lượt mới: đưa bảng chú thích về đầu để thấy ngay nhận xét / nước cần đi (bàn cờ không đổi chỗ)
+      $('panelTrain').scrollTop = 0;
       if (purpose) { askPurpose(); return; }
       // "Chỉ hỏi nước then chốt": nước thường app tự đi (chỉ ở chế độ Kiểm tra)
       if (t.mode === 'test' && t.keyOnly && !t.isKey()) {

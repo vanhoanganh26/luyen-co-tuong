@@ -73,6 +73,7 @@ export function initPlay(ctx) {
   function newGame(startFen, moves = [], side, level, book) {
     cfg = { side, level, book };
     closePlan();
+    $('panelPlay').scrollTop = 0; // khung cố định: đưa bảng bên về đầu để thấy trạng thái ván
     game = new Game(startFen);
     for (const iccs of moves) game.play(parseCoordMove(iccs));
     state = 'play'; result = null; analysis = null; savedId = null; lastEval = null;

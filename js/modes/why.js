@@ -49,9 +49,12 @@ export function whyHTML(fen, iccs, data, label = (x) => x, { title = '' } = {}) 
       h += `<p class="why-if">Nếu bỏ lượt, đối phương chưa có đòn gì đáng kể (chênh ${(th.loss / 100).toFixed(1)}) — nước này mang tính <b>xây dựng thế trận</b> hơn là đỡ đòn.</p>`;
     }
     const alts = rec.alts || [];
-    if (rec.best) h += `<p class="why-alt">Engine ưa <b>${esc(label(rec.best.vn))}</b> hơn khoảng ${(rec.best.diff / 100).toFixed(1)}.</p>`;
+    // Chênh dưới 0,1 điểm: coi như ngang nhau (tránh câu "hơn khoảng 0.0")
+    if (rec.best) h += Math.abs(rec.best.diff) < 10
+      ? `<p class="why-alt">Engine coi <b>${esc(label(rec.best.vn))}</b> tốt ngang nước này — cả hai đều đi được.</p>`
+      : `<p class="why-alt">Engine ưa <b>${esc(label(rec.best.vn))}</b> hơn khoảng ${(rec.best.diff / 100).toFixed(1)}.</p>`;
     else h += '<p class="why-alt">Engine cũng chọn đúng nước này là tốt nhất.</p>';
-    if (alts.length) h += `<p class="why-alt muted small">Nước khác: ${alts.map((a) => `${esc(label(a.vn))} (${a.diff >= 0 ? 'kém' : 'hơn'} ${(Math.abs(a.diff) / 100).toFixed(1)})`).join(', ')}. Điểm sau nước sách: ${fmtScore(rec.eval)} theo bên ${side}.</p>`;
+    if (alts.length) h += `<p class="why-alt muted small">Nước khác: ${alts.map((a) => `${esc(label(a.vn))} (${Math.abs(a.diff) < 10 ? 'ngang' : `${a.diff >= 0 ? 'kém' : 'hơn'} ${(Math.abs(a.diff) / 100).toFixed(1)}`})`).join(', ')}. Điểm sau nước sách: ${fmtScore(rec.eval)} theo bên ${side}.</p>`;
     h += `<p class="muted small">Số liệu: ${esc(data.engine || 'engine')}, độ sâu ${data.depth || '?'}. Phần ý nghĩa do app rút ra từ hình cờ.</p>`;
   } else {
     h += '<p class="muted small">Phần ý nghĩa do app rút ra từ hình cờ (chưa có số liệu engine cho nước này).</p>';

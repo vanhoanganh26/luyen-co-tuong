@@ -20,7 +20,7 @@ import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 import { renderAfterOpening } from './modes/after-opening.js';
 
-export const APP_VERSION = '0.10.2';
+export const APP_VERSION = '0.10.3';
 
 const $ = (id) => document.getElementById(id);
 
@@ -387,8 +387,20 @@ function showScreen(name) {
   $('tabOpen').setAttribute('aria-selected', String(name === 'openings' || name === 'train' || name === 'edit'));
   $('tabPlay').setAttribute('aria-selected', String(name === 'play'));
   if (name === 'free') { view.clearSelection(); if (view.flipped !== flipped) view.setFlipped(flipped); refresh(); }
+  // Màn có bàn cờ: "khung cố định" — trang không cuộn, bàn cờ đứng yên, chỉ bảng bên cuộn bên trong
+  document.body.classList.toggle('board-mode', !$('screenBoard').hidden);
+  document.querySelectorAll('#screenBoard > .panel').forEach((p) => { p.scrollTop = 0; });
+  setChrome();
   window.scrollTo({ top: 0 });
 }
+/** Chiều cao thanh trên + hàng tab (CSS dùng để tính cỡ bàn cờ vừa khít màn hình) */
+function setChrome() {
+  const tabs = document.querySelector('.tabs');
+  const h = document.querySelector('.topbar').offsetHeight + (tabs && getComputedStyle(tabs).display !== 'none' ? tabs.offsetHeight : 0);
+  document.documentElement.style.setProperty('--chrome', h + 'px');
+}
+window.addEventListener('resize', setChrome);
+window.addEventListener('orientationchange', () => setTimeout(setChrome, 300));
 function leaveModes() {
   if (editorUI.isOpen()) editorUI.close();
   if (openingsUI.isTraining()) openingsUI.exit(false);

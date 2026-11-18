@@ -558,3 +558,53 @@ body.training #btnStart, body.training #btnBack, body.training #btnFwd, body.tra
 .game-result .moves-line { font-size: 14px; line-height: 1.6; }
 .game-result .in-book { color: var(--ok); font-weight: 600; }
 .game-result .out-book { color: var(--bad); font-weight: 700; text-decoration: underline; }
+
+/* =====================================================================
+   KHUNG CỐ ĐỊNH CHO MÀN CÓ BÀN CỜ (0.10.3)
+   Trang không cuộn; bàn cờ đứng yên, to hết mức màn hình cho phép; chỉ bảng bên (chú thích,
+   "Vì sao?", phân tích…) cuộn bên trong khung của nó => nội dung dài/ngắn không làm bàn cờ xê dịch.
+   --chrome = chiều cao thanh trên + hàng tab (app.js đo), --pw = bề rộng bảng bên trên máy tính.
+   ===================================================================== */
+:root { --chrome: 110px; --pw: 380px; --row-h: 38px; --panel-min: 130px; }
+@media (min-width: 1500px) { :root { --pw: 430px; } }
+body.board-mode { overflow: hidden; overscroll-behavior: none; }
+body.board-mode #screenBoard {
+  height: calc(100dvh - var(--chrome)); box-sizing: border-box; max-width: none;
+  display: flex; flex-direction: column; gap: 6px; padding: 6px 8px 0; overflow: hidden;
+}
+/* Điện thoại / máy tính bảng dọc: [trạng thái | nút] trên một hàng, bàn cờ dưới, bảng dưới cùng cuộn riêng */
+body.board-mode #screenBoard .board-col {
+  flex: 0 0 auto; position: static;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "status ctl" "board board";
+  align-items: center; justify-items: center; gap: 6px;
+}
+body.board-mode #screenBoard .status { grid-area: status; width: 100%; max-width: none; min-height: var(--row-h); box-sizing: border-box; padding: 6px 8px; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+body.board-mode #screenBoard .controls { grid-area: ctl; flex-wrap: nowrap; gap: 4px; }
+body.board-mode #screenBoard .controls .ctl { width: 38px; height: var(--row-h); border-radius: 10px; }
+body.board-mode #screenBoard .controls .ctl svg { width: 20px; height: 20px; }
+body.board-mode #screenBoard .ctl-sep { width: 2px; }
+body.board-mode #screenBoard .board-box {
+  grid-area: board;
+  width: min(100%, calc((100dvh - var(--chrome) - var(--row-h) - var(--panel-min) - 26px) * 0.844));
+  max-width: none;
+}
+body.board-mode #screenBoard > .panel {
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none;
+  width: 100%; max-width: 760px; margin: 0 auto; padding-bottom: 16px; box-sizing: border-box;
+}
+/* Máy tính bảng dọc: chừa nhiều chỗ hơn cho bảng chú thích */
+@media (min-width: 601px) and (max-width: 899px) { :root { --panel-min: 240px; } }
+/* Máy tính / máy tính bảng ngang: [trạng thái] trên; [nút dọc | bàn cờ] dưới; bảng bên phải cao hết màn hình */
+@media (min-width: 900px) {
+  body.board-mode #screenBoard { flex-direction: row; justify-content: center; align-items: stretch; gap: 18px; padding: 8px 16px 0; }
+  body.board-mode #screenBoard .board-col {
+    grid-template-columns: auto auto; grid-template-areas: "status status" "ctl board";
+    align-items: start; align-content: start;
+  }
+  body.board-mode #screenBoard .controls { flex-direction: column; }
+  body.board-mode #screenBoard .ctl-sep { width: auto; height: 4px; }
+  body.board-mode #screenBoard .board-box {
+    width: min(calc(100vw - var(--pw) - 100px), calc((100dvh - var(--chrome) - var(--row-h) - 22px) * 0.844));
+  }
+  body.board-mode #screenBoard > .panel { flex: 0 0 var(--pw); width: var(--pw); max-width: none; margin: 0; height: 100%; }
+}
