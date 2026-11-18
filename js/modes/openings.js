@@ -14,6 +14,11 @@ import { engine } from '../engine/client.js';
 import { analyzeMove, purposeQuiz } from '../train/move-insight.js';
 import { whyHTML, loadInsights } from './why.js';
 import { renderAfterOpening } from './after-opening.js';
+import { deserializeOpening, sideToMoveAt } from '../train/opening-tree.js';
+
+/** Tên hạng nước trong book (khớp tools/build-book.mjs) */
+export const GRADE_NAME = { best: 'Mạnh nhất', good: 'Tốt', ok: 'Chơi được', weak: 'Yếu', blunder: 'Hớ' };
+const GRADE_ORDER = { best: 0, good: 1, ok: 2, weak: 3, blunder: 4 };
 
 const $ = (id) => document.getElementById(id);
 const SIDE_NAME = { r: 'Đỏ (đi trước)', b: 'Đen (đi sau)' };
@@ -23,7 +28,9 @@ export function initOpenings(ctx) {
   const { view, store, Sound, toast } = ctx;
   let openings = [];
   let cards = store.getJSON('srs', {}) || {};
-  let filter = 'all';
+  let filter = 'book';
+  let bookChapters = [];         // các chương book (data/book.built.json)
+  let bookMeta = null;
   let trainer = null;
   let busy = false;              // đang chờ máy đi
   let lastCfg = null;            // { op, side, mode } của lần luyện gần nhất
@@ -38,7 +45,7 @@ export function initOpenings(ctx) {
 
   /** Ghép dữ liệu gốc + chỉnh sửa của anh rồi dựng lại cây */
   function rebuild() {
-    openings = applyEdits(baseData.openings, edits);
+    openings = [...applyEdits(baseData.openings, edits), ...bookChapters];
     const all = openings.flatMap((o) => o.lines);
     const mine = all.filter((l) => l.userEdited || l.userAdded).length;
     $('opNote').textContent = `${openings.length} mẫu khai cuộc, ${all.length} biến${mine ? ` (${mine} biến anh soạn/sửa)` : ''}. ` + verifySummary(openings);
@@ -54,6 +61,22 @@ export function initOpenings(ctx) {
         data = await res.json();
       }
       baseData = data;
+      // Book xếp hạng (không bắt buộc: thiếu file thì app vẫn chạy với dữ liệu cũ)
+      try {
+        let book = window.__XQT_BOOK__;
+        if (!book) { const rb = await fetch('data/book.built.json'); if (rb.ok) book = await rb.json(); }
+        if (book) {
+          bookMeta = book;
+          // Cầm Đỏ trước, cầm Đen sau (giữ thứ tự khai cuộc trong từng bên)
+          const order = (c) => (c.bookSide === 'r' ? 0 : 1);
+          bookChapters = [...book.chapters].sort((a, b) => order(a) - order(b)).map((c) => {
+            const op = deserializeOpening(c);
+            op.group = `Book cầm ${c.bookSide === 'r' ? 'Đỏ' : 'Đen'} · ${c.group}`;
+            return op;
+          });
+        }
+      } catch (e) { console.warn('Không tải được book:', e); }
+      if (!bookChapters.length && filter === 'book') filter = 'all';
       try { rebuild(); } catch (e) {
         // Chỉnh sửa hỏng (hiếm) => bỏ qua để app vẫn chạy
         console.warn('Bỏ qua chỉnh sửa lỗi:', e); edits = normalizeEdits(null); rebuild();
@@ -89,6 +112,7 @@ export function initOpenings(ctx) {
   }
 
   function renderList() {
+    document.querySelectorAll('#screenOpenings .chip').forEach((x) => x.classList.toggle('on', x.dataset.filter === filter));
     const list = $('opList');
     list.innerHTML = '';
     const groups = new Map();
@@ -111,10 +135,10 @@ export function initOpenings(ctx) {
       for (const op of ops) {
         const st = statsOf(op);
         const b = document.createElement('button');
-        b.className = 'op-card' + (op.kind === 'trap' ? ' trap' : '');
+        b.className = 'op-card' + (op.kind === 'trap' ? ' trap' : op.kind === 'book' ? ' book' : '');
         const sides = op.sides.map((s) => (s === 'r' ? 'Đỏ' : 'Đen')).join(' / ');
         b.innerHTML = `<span class="op-name"></span>
-          <span class="op-meta">${op.lines.length} biến · cầm ${sides}${engStat(op)}</span>
+          <span class="op-meta">${op.kind === 'book' ? `${op.lines.length} nhánh (${op.lines.filter((l) => l.alt).length} nhánh đối phương đi khác) · cầm ${sides}` : `${op.lines.length} biến · cầm ${sides}${engStat(op)}`}</span>
           <span class="op-stat">${st.started ? `Đúng ${Math.round((st.acc || 0) * 100)}%` : 'Chưa luyện'}${st.due ? ` · <b>${st.due} cần ôn</b>` : ''}</span>`;
         b.querySelector('.op-name').textContent = op.name;
         b.onclick = () => openDialog(op);
@@ -137,7 +161,7 @@ export function initOpenings(ctx) {
 
   function startReview() {
     if (!openings.length) return;
-    const pick = pickReview(openings.filter((o) => o.kind === 'theory'), cards);
+    const pick = pickReview(openings.filter((o) => o.kind === 'theory' || o.kind === 'book'), cards);
     if (!pick) return;
     start(pick.op, pick.side, 'test');
     toast(`Ôn: ${pick.op.name} — anh cầm ${pick.side === 'r' ? 'Đỏ' : 'Đen'}`);
@@ -156,6 +180,14 @@ export function initOpenings(ctx) {
     (op.sides.includes(lastSide) ? (lastSide === 'r' ? r : b) : (op.sides[0] === 'r' ? r : b)).checked = true;
     const lastMode = store.getJSON('lastMode', 'learn');
     ({ test: $('opModeTest'), purpose: $('opModePurpose') }[lastMode] || $('opModeLearn')).checked = true;
+    const isBook = op.kind === 'book';
+    $('opOppGroup').hidden = !isBook;
+    $('opBookBox').hidden = !isBook;
+    $('opLinesBox').hidden = isBook;
+    if (isBook) {
+      (store.getJSON('lastOpp', 'book') === 'strange' ? $('opOppStrange') : $('opOppBook')).checked = true;
+      renderBookTree(op, '');
+    }
     $('opLineCount').textContent = op.lines.length;
     const ol = $('opLines');
     ol.innerHTML = '';
@@ -205,6 +237,63 @@ export function initOpenings(ctx) {
     $('opStart').disabled = !op.lines.length;
     $('dlgOpening').returnValue = '';
     if (!$('dlgOpening').open) $('dlgOpening').showModal();
+  }
+
+  // ---------- Cây book: duyệt các nước, đối phương xếp từ mạnh đến yếu ----------
+  function renderBookTree(op, nodeKey) {
+    const box = $('opBook');
+    const node = op.nodes.get(nodeKey) || op.root;
+    const keys = node.key ? node.key.split(' ') : [];
+    const SIDE = { r: 'Đỏ', b: 'Đen' };
+    const me = op.bookSide || op.sides[0];
+    const turn = sideToMoveAt(op, node);
+    // Đường đi (bấm để quay lại)
+    const crumbs = ['<button type="button" class="crumb" data-k="">Đầu ván</button>'];
+    for (let i = 1; i <= keys.length; i++) {
+      const n = op.nodes.get(keys.slice(0, i).join(' '));
+      crumbs.push(`<button type="button" class="crumb" data-k="${n.key}">${i % 2 === 1 ? Math.ceil(i / 2) + '.' : ''}${ctx.moveLabelVN(n.vn)}</button>`);
+    }
+    const kids = node.children.map((k) => op.nodes.get(k));
+    const inf = (n) => op.info?.[n.key];
+    kids.sort((a, b) => {
+      const ia = inf(a), ib = inf(b);
+      if (ia && ib) return (GRADE_ORDER[ia.grade] - GRADE_ORDER[ib.grade]) || (ia.loss - ib.loss);
+      return b.weight - a.weight;
+    });
+    const fmt = (cp) => (Math.abs(cp) >= 20000 ? (cp > 0 ? 'thắng' : 'thua') : (cp >= 0 ? '+' : '') + (cp / 100).toFixed(1));
+    let head;
+    if (!kids.length) head = '<p class="small"><b>Hết nhánh.</b></p>';
+    else if (turn === me) head = `<p class="small"><b>Lượt anh (${SIDE[me]})</b> — nước nên đi:</p>`;
+    else head = `<p class="small"><b>Lượt ${SIDE[turn]} (đối phương)</b> — ${kids.length} nước${kids.length > 1 ? ', xếp từ mạnh đến yếu' : ''}:</p>`;
+    const rows = kids.map((n) => {
+      const i = inf(n);
+      const badge = i ? `<span class="gr gr-${i.grade}">${GRADE_NAME[i.grade]}</span>` : '';
+      const loss = i ? `<span class="muted small">${i.loss <= 5 ? 'ngang nước tốt nhất' : 'kém ' + (i.loss / 100).toFixed(1)}</span>` : '';
+      const games = i?.games ? `<span class="small">${i.games} ván cao thủ</span>` : '';
+      const link = i?.link ? `<span class="small muted">→ ${i.link.same ? 'về chính biến' : i.link.name}</span>` : '';
+      const nAlt = n.lineIds.length;
+      return `<button type="button" class="book-move" data-k="${n.key}"><b>${ctx.moveLabelVN(n.vn)}</b> ${badge} ${loss} ${games} ${link}<span class="grow"></span><span class="muted small">${nAlt} nhánh ▸</span></button>`;
+    }).join('');
+    const note = node.comments?.length ? `<p class="small comment">${node.comments.join(' ').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c])}</p>` : '';
+    box.innerHTML = `<div class="crumbs">${crumbs.join('<span class="muted">›</span>')}</div>${note}${head}<div class="book-moves">${rows}</div>
+      <div class="row wrap"><button type="button" class="btn small-btn" id="opBookView">Xem thế này trên bàn cờ</button>
+      ${node.key ? '<button type="button" class="btn small-btn" id="opBookUp">◂ Lùi 1 nước</button>' : ''}
+      ${op.info?.[node.key]?.link && !op.info[node.key].link.same ? `<button type="button" class="btn small-btn primary" id="opBookLink">Mở chương "${op.info[node.key].link.name}" ▸</button>` : ''}</div>
+      <p class="muted small">Hạng do Pikafish chấm (${bookMeta?.depth ? 'độ sâu ' + bookMeta.depth.branch : ''}): Mạnh nhất ≤ 0,15 · Tốt ≤ 0,4 · Chơi được ≤ 0,75 · Yếu ≤ 1,8 · Hớ &gt; 1,8 điểm so với nước tốt nhất. Số ván cao thủ theo ECCO (xqbase.com); không ghi số là chưa có số liệu.</p>`;
+    box.querySelectorAll('[data-k]').forEach((b) => { b.onclick = () => renderBookTree(op, b.dataset.k); });
+    const lk = box.querySelector('#opBookLink');
+    if (lk) lk.onclick = () => {
+      const target = openings.find((o) => o.kind === 'book' && o.bookOf === op.info[node.key].link.id && o.bookSide === me);
+      if (target) { openDialog(target); renderBookTree(target, node.key.split(' ').filter((_, i, a) => target.nodes.has(a.slice(0, i + 1).join(' '))).join(' ')); }
+    };
+    const up = box.querySelector('#opBookUp');
+    if (up) up.onclick = () => renderBookTree(op, keys.slice(0, -1).join(' '));
+    box.querySelector('#opBookView').onclick = () => {
+      const nodes = keys.map((_, i) => op.nodes.get(keys.slice(0, i + 1).join(' ')));
+      $('dlgOpening').close('view');
+      ctx.loadIntoFree({ startFen: op.startFen, moves: keys, comments: nodes.map((n) => n.comments.join(' ')), ply: keys.length,
+        title: `${op.name} (book cầm ${SIDE[me]})` });
+    };
   }
 
   // ---------- Thêm / sửa / xóa biến ----------
@@ -272,7 +361,9 @@ export function initOpenings(ctx) {
     const mode = document.querySelector('input[name="opMode"]:checked')?.value || 'learn';
     store.setJSON('lastSide', side);
     store.setJSON('lastMode', mode);
-    start(selected, side, mode);
+    const opp = selected.kind === 'book' ? (document.querySelector('input[name="opOpp"]:checked')?.value || 'book') : 'book';
+    if (selected.kind === 'book') store.setJSON('lastOpp', opp);
+    start(selected, side, mode, opp);
   });
 
   /** Chuỗi nước của một biến: lấy theo đường đi trong cây tới lá */
@@ -300,11 +391,12 @@ export function initOpenings(ctx) {
   }
 
   // ---------- Luyện ----------
-  function start(op, side, mode) {
-    lastCfg = { op, side, mode };
+  function start(op, side, mode, oppStyle = 'book') {
+    lastCfg = { op, side, mode, oppStyle };
     purpose = mode === 'purpose';
     // Chế độ "Đoán ý đồ" không chấm lịch ôn (SRS) — dùng bộ thẻ tạm
-    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards });
+    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards, oppStyle });
+    $('trMode').title = '';
     quizScore = { right: 0, total: 0 };
     loadInsights();
     prevFlip = view.flipped;
@@ -312,7 +404,7 @@ export function initOpenings(ctx) {
     ctx.showScreen('train');
     if (view.flipped !== (side === 'b')) view.setFlipped(side === 'b');
     $('trName').textContent = op.name;
-    $('trMode').textContent = mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra';
+    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '');
     $('trMode').className = 'pill ' + (mode === 'test' ? 'test' : 'learn');
     $('trReveal').hidden = purpose;
     $('trQuiz').hidden = true;
@@ -330,7 +422,21 @@ export function initOpenings(ctx) {
     el.innerHTML = html;
   }
 
-  function nodeNote(n) { return n && n.comments.length ? n.comments.join(' ') : ''; }
+  function nodeNote(n) {
+    const c = n && n.comments.length ? n.comments.join(' ') : '';
+    const op = trainer?.op;
+    const inf = op?.info?.[n?.key];
+    if (c.includes('【')) return c;
+    if (!inf) {
+      // Nhánh phụ của book: nước đối phương là nước tốt nhất theo engine
+      const oppMove = op?.kind === 'book' && n && n.ply % 2 === (op.bookSide === 'r' ? 0 : 1);
+      const altOnly = oppMove && n.lineIds.every((id) => op.lines.find((l) => l.id === id)?.alt);
+      return altOnly ? `【Đáp tốt nhất theo Pikafish】 ${c}`.trim() : c;
+    }
+    // Nước chính biến của đối phương: thêm hạng + số ván cao thủ
+    const games = inf.games ? ` · ${inf.games} ván cao thủ (ECCO)` : '';
+    return `【${GRADE_NAME[inf.grade]}${games}】 ${c}`.trim();
+  }
 
   // ---------- "Vì sao?" ----------
   let purpose = false, quizScore = { right: 0, total: 0 };
@@ -435,8 +541,10 @@ export function initOpenings(ctx) {
       if (t.mode === 'learn') {
         const ex = t.mainExpected();
         const alt = t.expected().length > 1 ? ` (lý thuyết còn ${t.expected().length - 1} nước khác cũng đúng)` : '';
-        setFeedback('info', `Lượt anh. Nước lý thuyết: <b>${ctx.moveLabelVN(ex.vn)}</b>${alt}`);
-        $('trComment').textContent = nodeNote(ex);
+        setFeedback('info', `Lượt anh. ${t.op.kind === 'book' ? 'Nước nên đi' : 'Nước lý thuyết'}: <b>${ctx.moveLabelVN(ex.vn)}</b>${alt}`);
+        // Giữ lại nhận xét nước vừa đi của máy (hạng nước, số ván cao thủ) rồi mới tới gợi ý của anh
+        const prev = t.path.length && t.path[t.path.length - 1].by === 'opp' ? $('trComment').textContent : '';
+        $('trComment').textContent = [prev, nodeNote(ex)].filter(Boolean).join('\n');
         showWhy(ex, 'đi');
       } else if (!$('trFeedback').textContent) {
         setFeedback('info', 'Lượt anh. Đi nước theo lý thuyết.');
@@ -561,8 +669,8 @@ export function initOpenings(ctx) {
     saveCards();
     setTimeout(step, 1200);
   };
-  $('trRestart').onclick = () => lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode);
-  $('trAgain').onclick = () => lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode);
+  $('trRestart').onclick = () => lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
+  $('trAgain').onclick = () => lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
   $('trNextReview').onclick = () => startReview();
   $('trExit').onclick = () => exit();
   $('trToPlay').onclick = () => {
@@ -607,7 +715,7 @@ export function verifySummary(openings) {
   ];
   const parts = [];
   for (const g of groups) {
-    const lines = openings.filter((o) => (g.kind === 'trap' ? o.kind === 'trap' : o.kind !== 'trap')).flatMap((o) => o.lines);
+    const lines = openings.filter((o) => (g.kind === 'trap' ? o.kind === 'trap' : o.kind !== 'trap' && o.kind !== 'book')).flatMap((o) => o.lines);
     if (!lines.length) continue;
     const checked = lines.filter((l) => l.verification?.engine && l.verification.engine !== 'chưa kiểm định');
     const ok = checked.filter((l) => l.verification.engine === 'đạt').length;
@@ -616,5 +724,7 @@ export function verifySummary(openings) {
     const unchecked = lines.length - checked.length;
     parts.push(`${lines.length} ${g.label}: ${by} chấm ${ok} ${g.ok}, ${checked.length - ok} ${g.bad}${unchecked ? `, ${unchecked} chưa kiểm định` : ''}`);
   }
+  const book = openings.filter((o) => o.kind === 'book');
+  if (book.length) parts.unshift(`Book: ${book.length} chương, ${book.reduce((a, o) => a + o.lines.filter((l) => l.alt).length, 0)} nhánh đối phương đi khác (Pikafish chấm, xếp hạng)`);
   return parts.join(' · ') + '.';
 }

@@ -10,6 +10,9 @@ import { review, isDue, newCard } from './srs.js';
 import { sideToMoveAt } from './opening-tree.js';
 
 /** Khóa thẻ SRS cho một nút quyết định của người luyện */
+/** Trọng số chọn nước đối phương theo hạng (book): bình thường theo book / "chơi lạ" ưu tiên nước yếu */
+export const STRANGE_W = { best: 0.6, good: 0.8, ok: 1.5, weak: 3, blunder: 3 };
+
 export const cardKey = (openingId, side, nodeKey) => `${openingId}|${side}|${nodeKey}`;
 
 /**
@@ -35,7 +38,8 @@ export function subtreeStats(op, node, side, cards, now = Date.now()) {
 export class OpeningTrainer {
   /**
    * @param op      khai cuộc đã dựng cây (buildOpening / deserializeOpening)
-   * @param opts    { side: 'r'|'b', mode: 'learn'|'test', cards: {}, rng: () => number, now }
+   * @param opts    { side: 'r'|'b', mode: 'learn'|'test', cards: {}, rng: () => number, now,
+   *                 oppStyle: 'book' | 'strange' (book: đối phương chọn nước theo hạng; strange: ưu tiên nước yếu/hớ) }
    */
   constructor(op, opts) {
     this.op = op;
@@ -44,6 +48,7 @@ export class OpeningTrainer {
     this.cards = opts.cards || {};
     this.rng = opts.rng || Math.random;
     this.now = opts.now || (() => Date.now());
+    this.oppStyle = opts.oppStyle || 'book';
     this.reset();
   }
 
@@ -85,8 +90,10 @@ export class OpeningTrainer {
       const st = subtreeStats(this.op, k, this.side, this.cards, now);
       const errRate = st.seen ? st.errors / st.seen : 0;
       const dueRate = st.total ? st.due / st.total : 0;
-      // Trọng số gốc của biến × ưu tiên nhánh hay sai × ưu tiên nhánh đến hạn ôn
-      return Math.max(0.01, k.weight) * (1 + 3 * errRate) * (1 + dueRate);
+      // Trọng số gốc của biến (book: theo hạng nước) × ưu tiên nhánh hay sai × ưu tiên nhánh đến hạn ôn
+      const inf = this.op.info?.[k.key];
+      const base = inf ? (this.oppStyle === 'strange' ? (STRANGE_W[inf.grade] ?? 1) : inf.w) : Math.max(0.01, k.weight);
+      return base * (1 + 3 * errRate) * (1 + dueRate);
     });
     const sum = weights.reduce((a, b) => a + b, 0);
     let r = this.rng() * sum, pick = kids[kids.length - 1];

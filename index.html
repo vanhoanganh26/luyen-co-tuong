@@ -85,7 +85,8 @@
   <section class="screen" id="screenOpenings" hidden>
     <div class="op-head">
       <div class="chips" role="group" aria-label="Lọc">
-        <button class="chip on" data-filter="all">Tất cả</button>
+        <button class="chip on" data-filter="book">Book xếp hạng</button>
+        <button class="chip" data-filter="all">Tất cả</button>
         <button class="chip" data-filter="theory">Lý thuyết</button>
         <button class="chip" data-filter="trap">Bẫy cổ điển</button>
       </div>
@@ -382,6 +383,17 @@
           <label><input type="radio" name="opMode" value="purpose" id="opModePurpose"><span>Đoán ý đồ</span></label>
         </div>
       </div>
+      <div class="opt-group" id="opOppGroup" hidden>
+        <span class="opt-label">Đối phương</span>
+        <div class="seg" role="radiogroup" aria-label="Cách đối phương chọn nước">
+          <label><input type="radio" name="opOpp" value="book" id="opOppBook" checked><span>Theo book (nước mạnh hay gặp hơn)</span></label>
+          <label><input type="radio" name="opOpp" value="strange" id="opOppStrange"><span>Chơi lạ (hay đi nước yếu — tập trừng phạt)</span></label>
+        </div>
+      </div>
+      <details class="lines-box" id="opBookBox" hidden open>
+        <summary>Cây book: nước đối phương xếp từ mạnh đến yếu</summary>
+        <div id="opBook" class="book-tree"></div>
+      </details>
       <details class="lines-box" id="opLinesBox">
         <summary>Xem / sửa các biến (<span id="opLineCount">0</span>)</summary>
         <div class="row wrap lines-tools">

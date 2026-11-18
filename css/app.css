@@ -497,3 +497,22 @@ body.training #btnStart, body.training #btnBack, body.training #btnFwd, body.tra
 .ao-pv { border: 1px solid var(--accent); border-radius: 12px; padding: 8px; margin: 8px 0; }
 .ao-step { font-weight: 700; font-size: 14px; }
 .feedback .ao-jump { margin-top: 8px; height: auto; min-height: 40px; white-space: normal; }
+
+/* =====================================================================
+   BOOK KHAI CUỘC (xếp hạng nước mạnh → yếu)
+   ===================================================================== */
+.op-card.book { border-left: 4px solid var(--accent); }
+.book-tree { display: grid; gap: 6px; }
+.book-tree .crumbs { display: flex; flex-wrap: wrap; gap: 2px 4px; align-items: center; font-size: 13px; }
+.book-tree .crumb { border: 0; background: none; color: var(--accent); padding: 2px 3px; font: inherit; cursor: pointer; border-radius: 6px; }
+.book-tree .crumb:hover { background: var(--surface-2); }
+.book-moves { display: grid; gap: 4px; }
+.book-move { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; min-height: 40px; text-align: left;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); padding: 6px 10px; font: inherit; cursor: pointer; }
+.book-move:hover { border-color: var(--accent); }
+.gr { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.gr-best { background: var(--ok-bg); color: var(--ok); }
+.gr-good { background: var(--ok-bg); color: var(--ok); opacity: .85; }
+.gr-ok { background: var(--info-bg); color: var(--text); border: 1px solid var(--border); }
+.gr-weak { background: var(--warn-bg); color: var(--warn); }
+.gr-blunder { background: var(--bad-bg); color: var(--bad); }
