@@ -15,7 +15,8 @@ import { analyzeMove, purposeQuiz } from '../train/move-insight.js';
 import { whyHTML, loadInsights } from './why.js';
 import { renderAfterOpening } from './after-opening.js';
 import { deserializeOpening, sideToMoveAt } from '../train/opening-tree.js';
-import { linePlan, lineKey, recordRun, nextLine, groupSet, MASTER_STREAK } from '../train/line-plan.js';
+import { linePlan, lineKey, recordRun, nextLine, groupSet, MASTER_STREAK, isDue, dayOf } from '../train/line-plan.js';
+import { repertoireChapters, buildDaily, parseGame, compareWithBook, lineThrough } from '../train/daily.js';
 
 /** Tên hạng nước trong book (khớp tools/build-book.mjs) */
 export const GRADE_NAME = { best: 'Mạnh nhất', good: 'Tốt', ok: 'Chơi được', weak: 'Yếu', blunder: 'Hớ' };
@@ -34,7 +35,11 @@ export function initOpenings(ctx) {
   let bookMeta = null;
   let lineProg = store.getJSON('lineProgress', {}) || {};   // tiến độ "Học theo biến"
   const saveLineProg = () => store.setJSON('lineProgress', lineProg);
-  let session = null;            // { kind: 'line'|'group', op, side, lineId?, groupKey? } khi đang học theo biến
+  let session = null;            // { kind: 'line'|'group'|'daily', op, side, lineId?, groupKey?, queue?, idx? } khi đang học theo biến
+  let keymoves = null;           // nước then chốt / tương đương (data/keymoves.json)
+  let repertoire = store.getJSON('repertoire', { r: [], b: [] }) || { r: [], b: [] };
+  let goalPending = false;       // đang xem "đích đến" trước khi học biến mới
+  if (repertoire.r?.length || repertoire.b?.length) filter = 'rep';
   let trainer = null;
   let busy = false;              // đang chờ máy đi
   let lastCfg = null;            // { op, side, mode } của lần luyện gần nhất
@@ -81,6 +86,12 @@ export function initOpenings(ctx) {
         }
       } catch (e) { console.warn('Không tải được book:', e); }
       if (!bookChapters.length && filter === 'book') filter = 'all';
+      // Nước then chốt / tương đương (không bắt buộc)
+      try {
+        let km = window.__XQT_KEYMOVES__;
+        if (!km) { const rk = await fetch('data/keymoves.json'); if (rk.ok) km = await rk.json(); }
+        keymoves = km?.pos || null;
+      } catch (e) { console.warn('Không tải được keymoves:', e); }
       try { rebuild(); } catch (e) {
         // Chỉnh sửa hỏng (hiếm) => bỏ qua để app vẫn chạy
         console.warn('Bỏ qua chỉnh sửa lỗi:', e); edits = normalizeEdits(null); rebuild();
@@ -116,12 +127,16 @@ export function initOpenings(ctx) {
   }
 
   function renderList() {
+    if (filter === 'rep' && !(repertoire.r.length || repertoire.b.length)) filter = 'book';
     document.querySelectorAll('#screenOpenings .chip').forEach((x) => x.classList.toggle('on', x.dataset.filter === filter));
+    $('opRepCard').hidden = !bookChapters.length;
+    if (bookChapters.length) renderRepCard();
     const list = $('opList');
     list.innerHTML = '';
     const groups = new Map();
     for (const op of openings) {
-      if (filter !== 'all' && op.kind !== filter) continue;
+      if (filter === 'rep') { if (!inRep(op)) continue; }
+      else if (filter !== 'all' && op.kind !== filter) continue;
       if (!groups.has(op.group)) groups.set(op.group, []);
       groups.get(op.group).push(op);
     }
@@ -144,7 +159,7 @@ export function initOpenings(ctx) {
         b.innerHTML = `<span class="op-name"></span>
           <span class="op-meta">${op.kind === 'book' ? `${op.lines.length} nhánh (${op.lines.filter((l) => l.alt).length} nhánh đối phương đi khác) · cầm ${sides}` : `${op.lines.length} biến · cầm ${sides}${engStat(op)}`}</span>
           <span class="op-stat">${st.started ? `Đúng ${Math.round((st.acc || 0) * 100)}%` : 'Chưa luyện'}${st.due ? ` · <b>${st.due} cần ôn</b>` : ''}</span>`;
-        b.querySelector('.op-name').textContent = op.name;
+        b.querySelector('.op-name').textContent = (inRep(op) ? '★ ' : '') + op.name;
         b.onclick = () => openDialog(op);
         grid.appendChild(b);
       }
@@ -257,9 +272,13 @@ export function initOpenings(ctx) {
   function progOf(op, side, id) { return lineProg[lineKey(op.id, side, id)] || null; }
   function stateHTML(p) {
     if (!p) return '<span class="pl-st new" title="Chưa học">•</span>';
-    if (p.mastered) return '<span class="pl-st done" title="Đã thuộc">✓</span>';
-    return `<span class="pl-st doing" title="Đúng liên tiếp ${p.streak}/${MASTER_STREAK}">${p.streak}/${MASTER_STREAK}</span>`;
+    const due = isDue(p);
+    if (p.mastered) return due ? '<span class="pl-st due" title="Đã thuộc — đến hạn ôn">✓ ôn</span>' : '<span class="pl-st done" title="Đã thuộc">✓</span>';
+    return `<span class="pl-st doing" title="Nhớ đúng ${p.streak}/${MASTER_STREAK} ngày${due ? ' — đến hạn kiểm tra' : ''}">${p.streak}/${MASTER_STREAK}</span>`;
   }
+  const pct = (x) => (x >= 0.995 ? '' : x >= 0.1 ? `≈${Math.round(x * 100)}% gặp` : x >= 0.01 ? `≈${(x * 100).toFixed(0)}% gặp` : '<1% gặp');
+  $('opKeyOnly').checked = !!store.getJSON('keyOnly', false);
+  $('opKeyOnly').onchange = () => store.setJSON('keyOnly', $('opKeyOnly').checked);
 
   function renderPlan(op, side) {
     const box = $('opPlan');
@@ -269,7 +288,7 @@ export function initOpenings(ctx) {
     const nxt = nextLine(plan, lineProg, op, side);
     const nxtLine = nxt && op.lines.find((l) => l.id === nxt);
     const nxtGroup = nxt && plan.groups.find((g) => g.lines.some((x) => x.line.id === nxt));
-    let html = `<p class="small">Đã thuộc <b>${done}/${real}</b> biến (thuộc = đi đúng hết ${MASTER_STREAK} lần liên tiếp ở chế độ Kiểm tra). Lần đầu học một biến: có gợi ý; từ lần sau: không gợi ý.</p>`;
+    let html = `<p class="small">Đã thuộc <b>${done}/${real}</b> biến chính${plan.optional.length ? ` (+ ${plan.optional.length} biến tùy chọn, ít gặp)` : ''}. Thuộc = đi đúng hết ở ${MASTER_STREAK} ngày khác nhau (Kiểm tra, không gợi ý). Lần đầu học: xem đích đến rồi học có gợi ý. Thứ tự: hay gặp trước.</p>`;
     if (nxtLine) html += `<button type="button" class="btn primary plan-next" data-learn="${esc(nxt)}">▶ Học tiếp: ${esc(shortName(nxtLine))}</button>`;
     else if (real) html += '<p class="small"><b>Anh đã thuộc mọi biến của chương này.</b> Dùng "Luyện tổng hợp" để ôn.</p>';
     if (plan.branch.key) {
@@ -277,13 +296,14 @@ export function initOpenings(ctx) {
       html += `<p class="muted small">Các biến chung phần đầu: ${keys.map((_, i) => (i % 2 === 0 ? `${i / 2 + 1}.` : '') + ctx.moveLabelVN(op.nodes.get(keys.slice(0, i + 1).join(' ')).vn)).join(' ')} — rồi rẽ nhánh:</p>`;
     }
     for (const g of plan.groups) {
-      const gl = g.lines.filter((x) => !x.link);
+      const gl = g.lines.filter((x) => !x.link && !x.optional);
+      const gAll = g.lines.filter((x) => !x.link);
       const gDone = gl.filter((x) => progOf(op, side, x.line.id)?.mastered).length;
       const inf = g.info;
       const badge = inf ? `<span class="gr gr-${inf.grade}">${GRADE_NAME[inf.grade]}</span>` : '';
       const games = inf?.games ? ` <span class="small">${inf.games} ván cao thủ</span>` : '';
-      const onlyLink = !gl.length && g.lines[0]?.link;
-      html += `<details class="plan-group"${g === nxtGroup ? ' open' : ''}><summary><b>${esc(g.vn ? g.label.replace(g.vn, ctx.moveLabelVN(g.vn)) : g.label)}</b> ${badge}${games}<span class="grow"></span><span class="small muted">${onlyLink ? '→ chương khác' : `thuộc ${gDone}/${gl.length}`}</span></summary>`;
+      const onlyLink = !gAll.length && g.lines[0]?.link;
+      html += `<details class="plan-group"${g === nxtGroup ? ' open' : ''}><summary><b>${esc(g.vn ? g.label.replace(g.vn, ctx.moveLabelVN(g.vn)) : g.label)}</b> ${badge}${games}<span class="pl-reach">${g.reach !== undefined ? pct(g.reach) : ''}</span><span class="grow"></span><span class="small muted">${onlyLink ? '→ chương khác' : `thuộc ${gDone}/${gl.length}`}</span></summary>`;
       if (onlyLink) {
         html += `<p class="small">Nước này dẫn sang chương <b>${esc(g.lines[0].link.name)}</b>.</p><button type="button" class="btn small-btn" data-open="${esc(g.lines[0].link.id)}">Mở chương "${esc(g.lines[0].link.name)}" ▸</button>`;
       } else {
@@ -301,12 +321,12 @@ export function initOpenings(ctx) {
           }
           const dev = x.rank[0] > 0 ? Object.keys(GRADE_NAME)[x.rank[0] - 1] : null;
           const p = progOf(op, side, x.line.id);
-          html += `<li class="plan-line${cls}${p?.mastered ? ' done' : ''}${x.line.id === nxt ? ' cur' : ''}"${more ? ' hidden' : ''}>${stateHTML(p)}<span class="pl-name">${esc(shortName(x.line))}${dev ? ` <span class="gr gr-${dev}">${GRADE_NAME[dev]}</span>` : ' <span class="gr gr-main">Chính biến</span>'}${-x.rank[1] > 0 && dev ? ` <span class="small muted">${-x.rank[1]} ván</span>` : ''}</span><span class="grow"></span><button type="button" class="btn small-btn" data-learn="${esc(x.line.id)}">Học</button></li>`;
+          html += `<li class="plan-line${cls}${p?.mastered ? ' done' : ''}${x.line.id === nxt ? ' cur' : ''}"${more ? ' hidden' : ''}>${stateHTML(p)}<span class="pl-name">${esc(shortName(x.line))}${dev ? ` <span class="gr gr-${dev}">${GRADE_NAME[dev]}</span>` : ' <span class="gr gr-main">Chính biến</span>'}${-x.rank[1] > 0 && dev ? ` <span class="small muted">${-x.rank[1]} ván</span>` : ''}${x.optional ? ' <span class="small muted">· tùy chọn</span>' : ''} <span class="pl-reach">${pct(x.reach ?? 1)}</span></span><span class="grow"></span><button type="button" class="btn small-btn" data-learn="${esc(x.line.id)}">Học</button></li>`;
         }
         html += '</ol>';
         if (hidden) html += `<button type="button" class="btn small-btn plan-more">Xem thêm ${hidden} biến (nước ít quan trọng hơn) ▾</button> `;
         if (gl.length > 1) {
-          const gs = groupSet(g, lineProg, op, side);
+          const gs = groupSet({ ...g, lines: g.lines.filter((x) => !x.optional) }, lineProg, op, side);
           const label = gs.lines.length > 1 ? `Ôn nhóm: ${gs.lines.length - (gs.focus ? 1 : 0)} biến đã thuộc${gs.focus ? ' + 1 biến mới' : ''}` : '';
           if (label) html += `<button type="button" class="btn small-btn" data-group="${esc(g.key)}">${label} ▸</button>`;
         }
@@ -325,15 +345,169 @@ export function initOpenings(ctx) {
     });
   }
 
-  /** Học một biến: máy chỉ đi đúng biến đó. Lần đầu có gợi ý, các lần sau kiểm tra */
-  function startLine(op, side, lineId) {
+  /** Học một biến: máy chỉ đi đúng biến đó. Lần đầu: xem đích đến rồi học có gợi ý; các lần sau: Kiểm tra */
+  function runLine(op, side, lineId) {
     const p = progOf(op, side, lineId);
     const mode = p && p.runs ? 'test' : 'learn';
-    session = { kind: 'line', op, side, lineId };
-    start(op, side, mode, 'book', { lines: [lineId], focusLine: lineId });
+    start(op, side, mode, 'book', { lines: [lineId], focusLine: lineId, goal: mode === 'learn' });
     const l = op.lines.find((x) => x.id === lineId);
     toast(`${mode === 'learn' ? 'Học mới (có gợi ý)' : 'Kiểm tra'}: ${l ? shortName(l) : ''}`);
   }
+  function startLine(op, side, lineId) {
+    session = { kind: 'line', op, side, lineId };
+    runLine(op, side, lineId);
+  }
+
+  // ---------- A3: Bài luyện hôm nay ----------
+  function repChapters() { return repertoireChapters(bookChapters, repertoire); }
+  function todayPlan() {
+    const prio = (store.getJSON('priorityLines', []) || []).filter((x) => !lineProg[lineKey(x.opId, x.side, x.lineId)]?.runs);
+    const d = buildDaily(repChapters(), lineProg);
+    // Biến rút ra từ ván của anh (Phân tích ván) được học trước biến mới theo lộ trình
+    for (const x of prio.slice(0, 1)) {
+      const op = openings.find((o) => o.id === x.opId);
+      if (op && !d.items.some((i) => i.op === op && i.lineId === x.lineId)) d.items.splice(d.items.findIndex((i) => i.kind === 'new') >= 0 ? d.items.findIndex((i) => i.kind === 'new') : d.items.length, 0, { op, side: x.side, lineId: x.lineId, kind: 'new', fromGame: true });
+    }
+    return d;
+  }
+  function startDaily() {
+    if (!bookChapters.length) { toast('Đang tải dữ liệu khai cuộc…'); return; }
+    if (!repChapters().length) { toast('Hãy chọn bộ khai cuộc của anh trước.'); openRepDialog(); return; }
+    const d = todayPlan();
+    if (!d.items.length) { toast('Hôm nay không còn biến nào phải ôn hay học mới trong bộ của anh. Tuyệt!'); return; }
+    session = { kind: 'daily', queue: d.items, idx: 0 };
+    runDailyItem();
+  }
+  function runDailyItem() {
+    const it = session.queue[session.idx];
+    Object.assign(session, { op: it.op, side: it.side, lineId: it.lineId });
+    runLine(it.op, it.side, it.lineId);
+  }
+  function renderRepCard() {
+    const reps = repChapters();
+    const names = (side) => reps.filter((x) => x.side === side).map((x) => x.op.name).join('; ') || '—';
+    $('opRepSum').innerHTML = reps.length
+      ? `<b>Cầm Đỏ:</b> ${names('r')}<br><b>Cầm Đen:</b> ${names('b')}`
+      : 'Chưa chọn. Hãy chọn 1 hệ cầm Đỏ và 1–2 phương án cầm Đen — app chỉ đưa các chương đó vào bài luyện hằng ngày.';
+    if (!reps.length) { $('opDailySum').textContent = ''; return; }
+    let learned = 0, total = 0, mastered = 0;
+    for (const { op, side } of reps) {
+      const plan = linePlan(op, side);
+      total += plan.order.length;
+      for (const id of plan.order) { const p = progOf(op, side, id); if (p?.runs) learned++; if (p?.mastered) mastered++; }
+    }
+    const d = todayPlan();
+    const rev = d.items.filter((i) => i.kind === 'review').length;
+    const neu = d.items.filter((i) => i.kind === 'new').length;
+    $('opDailySum').textContent = `Bài hôm nay: ${rev} biến ôn${d.dueTotal > rev ? ` (còn ${d.dueTotal - rev} biến đến hạn để mai)` : ''} + ${neu} biến mới. Lộ trình: đã học ${learned}/${total}, thuộc ${mastered}/${total} biến.`;
+  }
+  $('btnDaily').onclick = () => startDaily();
+
+  // ---------- A1: Bộ khai cuộc của anh ----------
+  function openRepDialog() {
+    const theoryIds = [];
+    for (const c of bookChapters) if (!theoryIds.includes(c.bookOf)) theoryIds.push(c.bookOf);
+    for (const side of ['r', 'b']) {
+      const box = $(side === 'r' ? 'repR' : 'repB');
+      box.innerHTML = theoryIds.map((id) => {
+        const c = bookChapters.find((x) => x.bookOf === id && x.bookSide === side);
+        if (!c) return '';
+        const on = repertoire[side]?.includes(id) ? ' checked' : '';
+        return `<label><input type="checkbox" data-side="${side}" value="${esc(id)}"${on}><span>${esc(c.name)}</span></label>`;
+      }).join('');
+    }
+    const count = () => {
+      let pos = 0;
+      for (const el of document.querySelectorAll('#dlgRep input:checked')) {
+        const c = bookChapters.find((x) => x.bookOf === el.value && x.bookSide === el.dataset.side);
+        if (c) pos += [...c.nodes.values()].filter((n) => n.children.length && sideToMoveAt(c, n) === el.dataset.side).length;
+      }
+      $('repCount').textContent = pos ? `Khoảng ${pos} thế anh phải tự đi (gồm cả biến tùy chọn).` : 'Chưa chọn chương nào.';
+    };
+    document.querySelectorAll('#dlgRep input').forEach((el) => { el.onchange = count; });
+    count();
+    $('dlgRep').showModal();
+  }
+  $('btnRepPick').onclick = openRepDialog;
+  $('dlgRep').addEventListener('close', () => {
+    if ($('dlgRep').returnValue !== 'save') return;
+    repertoire = { r: [], b: [] };
+    for (const el of document.querySelectorAll('#dlgRep input:checked')) repertoire[el.dataset.side].push(el.value);
+    store.setJSON('repertoire', repertoire);
+    toast('Đã lưu bộ khai cuộc của anh.');
+    if (filter === 'book' && (repertoire.r.length || repertoire.b.length)) filter = 'rep';
+    renderList();
+  });
+  const inRep = (op) => op.kind === 'book' && repertoire[op.bookSide]?.includes(op.bookOf);
+
+  // ---------- B3: Phân tích ván của anh so với book ----------
+  $('btnGame').onclick = () => { $('gameResult').innerHTML = ''; $('dlgGame').showModal(); };
+  $('gameFromFree').onclick = () => {
+    const g = ctx.getFreeGame?.();
+    if (!g || !g.moves.length) { toast('Bàn cờ tự do chưa có nước nào.'); return; }
+    if (g.startFen.split(' ')[0] !== op0Fen().split(' ')[0]) { toast('Ván ở Bàn cờ không bắt đầu từ thế khởi đầu.'); return; }
+    $('gameText').value = g.moves.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}. ` : '') + m.vn).join(' ');
+  };
+  const op0Fen = () => bookChapters[0]?.startFen || 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1';
+  $('gameRun').onclick = async () => {
+    const box = $('gameResult');
+    const side = document.querySelector('input[name="gameSide"]:checked').value;
+    const g = parseGame($('gameText').value, op0Fen());
+    if (!g.moves.length) { box.innerHTML = `<p class="err">${esc(g.error || 'Chưa có nước nào.')}</p>`; return; }
+    const repIds = repertoire[side] || [];
+    const r = compareWithBook(bookChapters, g.moves, side, repIds);
+    if (!r) { box.innerHTML = '<p class="err">Chưa có book cho bên này.</p>'; return; }
+    const label = (i) => (i % 2 === 0 ? `${i / 2 + 1}.` : '') + ctx.moveLabelVN(g.vn[i]);
+    const movesHTML = g.vn.map((_, i) => `<span class="${i < r.ply ? 'in-book' : i === r.ply ? 'out-book' : ''}">${label(i)}</span>`).join(' ');
+    let html = `${g.error ? `<p class="err">${esc(g.error)} (chỉ phân tích phần đọc được)</p>` : ''}<p class="moves-line">${movesHTML}</p>`;
+    html += `<p class="small">Chương gần nhất: <b>${esc(r.op.name)}</b> (book cầm ${side === 'r' ? 'Đỏ' : 'Đen'}${inRep(r.op) ? ', trong bộ của anh' : ''}). Ván đi đúng book <b>${r.ply}</b> nước.</p>`;
+    let learn = null;
+    if (r.leave) {
+      const bookTxt = r.leave.bookMoves.map((b) => `<b>${ctx.moveLabelVN(b.vn)}</b>${b.grade ? ` (${GRADE_NAME[b.grade]})` : ''}`).join(', ');
+      const who = r.leave.by === 'me' ? 'Anh' : 'Đối thủ';
+      html += `<p>${who} rời book ở nước <b>${label(r.ply)}</b>. Book có: ${bookTxt}.</p><p class="small muted" id="gameEng">Đang nhờ engine chấm…</p>`;
+      learn = lineThrough(r.op, side, r.node);
+    } else if (r.endOfBook) html += `<p>Ván đi hết biến book (${r.ply} nước) rồi mới rẽ — phần khai cuộc tốt! Phần sau là trung cuộc.</p>`;
+    else html += '<p>Toàn bộ các nước trong ván đều nằm trong book.</p>';
+    html += '<div class="row wrap">';
+    if (learn) html += `<button type="button" class="btn primary" id="gameLearn">Học biến này: ${esc(shortName(learn))} ▸</button>`;
+    html += '<button type="button" class="btn" id="gameView">Xem ván trên bàn cờ</button></div>';
+    box.innerHTML = html;
+    $('gameView').onclick = () => {
+      $('dlgGame').close();
+      ctx.loadIntoFree({ startFen: op0Fen(), moves: g.moves, ply: Math.min(g.moves.length, r.ply + 1), title: 'Ván của anh (so với book)' });
+    };
+    if (learn) {
+      $('gameLearn').onclick = () => {
+        // Đưa vào danh sách ưu tiên của bài luyện hằng ngày rồi học ngay
+        const prio = (store.getJSON('priorityLines', []) || []).filter((x) => !(x.opId === r.op.id && x.lineId === learn.id));
+        prio.unshift({ opId: r.op.id, side, lineId: learn.id });
+        store.setJSON('priorityLines', prio.slice(0, 10));
+        $('dlgGame').close();
+        startLine(r.op, side, learn.id);
+      };
+    }
+    // Engine: nước trong ván so với nước book (điểm theo bên anh)
+    if (r.leave) {
+      try {
+        const before = g.moves.slice(0, r.ply);
+        const fmt = (cp) => (Math.abs(cp) > 20000 ? (cp > 0 ? 'thắng' : 'thua') : (cp > 0 ? '+' : '') + (cp / 100).toFixed(1));
+        const meSign = (plyAfter) => ((plyAfter % 2 === 0) === (side === 'r') ? 1 : -1); // điểm trả về theo bên đi tiếp
+        const a = await engine.search(op0Fen(), [...before, r.leave.iccs], { movetime: 900 });
+        const b = await engine.search(op0Fen(), [...before, r.leave.bookMoves[0].iccs], { movetime: 900 });
+        const n = r.ply + 1;
+        const sa = a.score * meSign(n), sb = b.score * meSign(n);
+        const el = document.getElementById('gameEng');
+        if (el) el.textContent = `Engine (${engine.name}), điểm theo bên anh: nước trong ván ${label(r.ply)} = ${fmt(sa)}; nước book ${ctx.moveLabelVN(r.leave.bookMoves[0].vn)} = ${fmt(sb)}.` +
+          (r.leave.by === 'opp' && sa > sb + 30 ? ' Đối thủ rời book bằng nước kém — anh có cơ hội ăn lời.' : '') +
+          (r.leave.by === 'me' && sb > sa + 30 ? ' Anh rời book bằng nước kém hơn — nên học biến bên dưới.' : '');
+      } catch (e) {
+        const el = document.getElementById('gameEng');
+        if (el) el.textContent = 'Engine chưa chấm được: ' + e.message;
+      }
+    }
+  };
+
   /** Ôn cả nhóm, mở rộng dần: các biến đã thuộc + 1 biến mới */
   function startGroup(op, side, groupKey) {
     const plan = linePlan(op, side);
@@ -499,10 +673,12 @@ export function initOpenings(ctx) {
   function start(op, side, mode, oppStyle = 'book', scope = null) {
     if (!scope) session = null; // luyện tổng hợp: thoát "Học theo biến"
     lastCfg = { op, side, mode, oppStyle, scope };
+    busy = false;
     $('trNextLine').hidden = true;
     purpose = mode === 'purpose';
     // Chế độ "Đoán ý đồ" không chấm lịch ôn (SRS) — dùng bộ thẻ tạm
-    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards, oppStyle, ...(scope || {}) });
+    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards, oppStyle, keymoves,
+      keyOnly: mode === 'test' && !!store.getJSON('keyOnly', false), ...(scope || {}) });
     $('trMode').title = '';
     quizScore = { right: 0, total: 0 };
     loadInsights();
@@ -511,16 +687,53 @@ export function initOpenings(ctx) {
     ctx.showScreen('train');
     if (view.flipped !== (side === 'b')) view.setFlipped(side === 'b');
     $('trName').textContent = op.name;
-    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '') + (session ? (session.kind === 'line' ? ' · 1 biến' : ' · ôn nhóm') : '');
+    const sessTxt = !session ? '' : session.kind === 'line' ? ' · 1 biến' : session.kind === 'group' ? ' · ôn nhóm' : ` · bài hôm nay ${session.idx + 1}/${session.queue.length}`;
+    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '') + (mode === 'test' && store.getJSON('keyOnly', false) ? ' · chỉ nước then chốt' : '') + sessTxt;
     $('trMode').className = 'pill ' + (mode === 'test' ? 'test' : 'learn');
     $('trReveal').hidden = purpose;
     $('trQuiz').hidden = true;
     clearWhy();
     $('trEnd').hidden = true;
+    $('trGoal').hidden = true;
+    goalPending = false;
     setFeedback('', '');
     $('trComment').textContent = '';
     update();
+    if (scope?.goal) return showGoal(op, side, scope.lines[0]);
     step();
+  }
+
+  // ---------- B1: xem "đích đến" (thế cuối biến + kế hoạch) trước khi học biến mới ----------
+  function showGoal(op, side, lineId) {
+    const t = trainer;
+    const line = op.lines.find((l) => l.id === lineId);
+    if (!line) return step();
+    goalPending = true;
+    busy = true;
+    const keys = line.lastKey.split(' ');
+    const p = new Position(op.startFen);
+    for (const k of keys) p.makeMove(parseCoordMove(k));
+    view.render({ board: p.board, last: parseCoordMove(keys[keys.length - 1]), checkSq: -1 });
+    view.setHint(null);
+    $('status').textContent = `Đích đến: thế sau ${keys.length} nước`;
+    $('trGoal').hidden = false;
+    const moves = keys.map((_, i) => (i % 2 === 0 ? `${i / 2 + 1}.` : '') + ctx.moveLabelVN(op.nodes.get(keys.slice(0, i + 1).join(' ')).vn)).join(' ');
+    $('trGoalPlan').innerHTML = `<span class="muted small">Toàn biến: ${moves}</span>${line.plan ? '<br>Kế hoạch (soạn sẵn): ' + line.plan.replace(/[<>&]/g, '') : ''}`;
+    renderAfterOpening($('trGoalBox'), {
+      fen: p.fen(), me: side, view, label: ctx.moveLabelVN, engine,
+      title: 'Thế cuối biến: triển khai tiếp thế nào?', backLabel: 'Về thế cuối biến',
+      isActive: () => trainer === t && goalPending,
+    });
+    setFeedback('info', 'Xem đích đến trước — biết mình muốn đi tới đâu thì nhớ đường đi dễ hơn nhiều.');
+    $('trGoalGo').onclick = () => {
+      if (trainer !== t) return;
+      goalPending = false; busy = false;
+      $('trGoal').hidden = true;
+      $('trGoalBox').innerHTML = '';
+      setFeedback('', '');
+      update();
+      step();
+    };
   }
 
   function setFeedback(kind, html) {
@@ -645,16 +858,29 @@ export function initOpenings(ctx) {
     if (t.isEnd()) return finish();
     if (t.isUserTurn()) {
       if (purpose) { askPurpose(); return; }
+      // "Chỉ hỏi nước then chốt": nước thường app tự đi (chỉ ở chế độ Kiểm tra)
+      if (t.mode === 'test' && t.keyOnly && !t.isKey()) {
+        busy = true;
+        setTimeout(() => {
+          if (trainer !== t) return;
+          const n = t.autoMove();
+          busy = false;
+          if (n) { Sound.move(); update(parseCoordMove(n.iccs)); $('trComment').textContent = `App tự đi nước thường: ${ctx.moveLabelVN(n.vn)}.`; }
+          step();
+        }, 450);
+        return;
+      }
+      const keyTag = t.isKey() ? ' <span class="gr gr-key">⭐ Nước then chốt — phải nhớ đúng</span>' : '';
       if (t.mode === 'learn') {
         const ex = t.mainExpected();
         const alt = t.expected().length > 1 ? ` (lý thuyết còn ${t.expected().length - 1} nước khác cũng đúng)` : '';
-        setFeedback('info', `Lượt anh. ${t.op.kind === 'book' ? 'Nước nên đi' : 'Nước lý thuyết'}: <b>${ctx.moveLabelVN(ex.vn)}</b>${alt}`);
+        setFeedback('info', `Lượt anh. ${t.op.kind === 'book' ? 'Nước nên đi' : 'Nước lý thuyết'}: <b>${ctx.moveLabelVN(ex.vn)}</b>${alt}${keyTag}`);
         // Giữ lại nhận xét nước vừa đi của máy (hạng nước, số ván cao thủ) rồi mới tới gợi ý của anh
         const prev = t.path.length && t.path[t.path.length - 1].by === 'opp' ? $('trComment').textContent : '';
         $('trComment').textContent = [prev, nodeNote(ex)].filter(Boolean).join('\n');
         showWhy(ex, 'đi');
-      } else if (!$('trFeedback').textContent) {
-        setFeedback('info', 'Lượt anh. Đi nước theo lý thuyết.');
+      } else if (!$('trFeedback').textContent || keyTag) {
+        setFeedback('info', 'Lượt anh. Đi nước theo lý thuyết.' + keyTag);
       }
       return;
     }
@@ -702,13 +928,26 @@ export function initOpenings(ctx) {
       const plan = linePlan(session.op, session.side);
       const nid = nextLine(plan, lineProg, session.op, session.side, line.id);
       const nl = nid && session.op.lines.find((x) => x.id === nid);
-      if (p.mastered && !before?.mastered) planMsg = `<br><b>✓ Đã thuộc biến này!</b>${nl ? ' Biến tiếp theo: ' + shortName(nl) + '.' : ' Anh đã thuộc mọi biến của chương.'}`;
-      else if (p.mastered) planMsg = '<br>Biến này anh đã thuộc.';
-      else if (t.mode === 'learn') planMsg = `<br>Lần sau là <b>Kiểm tra</b> (không gợi ý): đi đúng hết ${MASTER_STREAK} lần liên tiếp là thuộc.`;
-      else planMsg = `<br>Đúng hết liên tiếp: <b>${p.streak}/${MASTER_STREAK}</b>${t.score.wrong || t.score.retry ? ' — còn nước chưa chắc, luyện lại nhé.' : '.'}`;
-      $('trNextLine').hidden = !(nl && (p.mastered || session.kind === 'group'));
-      $('trNextLine').textContent = nl ? `Biến tiếp theo: ${shortName(nl)} ▸` : 'Biến tiếp theo ▸';
-      $('trAgain').textContent = session.kind === 'group' ? 'Ôn nhóm lần nữa' : p.mastered ? 'Luyện lại biến này' : 'Luyện lại (Kiểm tra)';
+      const days = `${p.streak}/${MASTER_STREAK} ngày`;
+      if (p.mastered && !before?.mastered) planMsg = `<br><b>✓ Đã thuộc biến này</b> (nhớ đúng ở ${MASTER_STREAK} ngày khác nhau). App sẽ hẹn ôn lại sau vài ngày.`;
+      else if (p.mastered) planMsg = `<br>Biến đã thuộc — ôn đạt. Lần ôn sau: ${new Date(p.due).toLocaleDateString('vi-VN')}.`;
+      else if (t.mode === 'learn') planMsg = `<br>Lần sau là <b>Kiểm tra</b> (không gợi ý). Thuộc = đi đúng hết ở ${MASTER_STREAK} ngày khác nhau.`;
+      else if (!t.score.wrong && !t.score.retry) planMsg = `<br>Đúng hết! Đã nhớ đúng <b>${days}</b>${p.streak < MASTER_STREAK ? ' — kiểm tra lại vào ngày mai để tính là thuộc (nhớ lâu, không phải nhớ tạm).' : '.'}`;
+      else planMsg = `<br>Còn nước chưa chắc — chuỗi nhớ đúng về 0. Luyện lại nhé.`;
+      if (session.kind === 'daily') {
+        const left = session.queue.length - session.idx - 1;
+        $('trNextLine').hidden = left <= 0;
+        $('trNextLine').textContent = `Tiếp bài hôm nay (${session.idx + 2}/${session.queue.length}) ▸`;
+        if (left <= 0) {
+          planMsg += '<br><b>🎉 Xong bài luyện hôm nay!</b> Nên bấm "Đánh tiếp với máy" để thử đánh tiếp từ cuối biến vừa học.';
+          logActivity(store, 'daily');
+        }
+        $('trAgain').textContent = 'Luyện lại biến này';
+      } else {
+        $('trNextLine').hidden = !(nl && (p.mastered || session.kind === 'group' || t.mode === 'test'));
+        $('trNextLine').textContent = nl ? `Biến tiếp theo: ${shortName(nl)} ▸` : 'Biến tiếp theo ▸';
+        $('trAgain').textContent = session.kind === 'group' ? 'Ôn nhóm lần nữa' : p.mastered ? 'Luyện lại biến này' : 'Luyện lại (Kiểm tra)';
+      }
     } else $('trAgain').textContent = 'Luyện tiếp';
     setFeedback(t.score.wrong ? 'warn' : 'ok', (t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!') + planMsg + AO_LINK);
     Sound.end();
@@ -745,6 +984,19 @@ export function initOpenings(ctx) {
         showWhy(res.node);
         saveCards();
         step();
+      } else if (res.result === 'equiv') {
+        // Nước tương đương: tính đúng, app đi nước book để tiếp tục biến
+        Sound.move();
+        const before = t.path.slice(0, -1).map((p) => p.node.iccs);
+        const prevPos = new Position(t.op.startFen);
+        for (const iccs of before) prevPos.makeMove(parseCoordMove(iccs));
+        const mine = ctx.moveLabelVN(moveToNotation(prevPos, res.played));
+        setFeedback('ok', `<b>${mine}</b> cũng tốt — kém nước tốt nhất không đáng kể (Pikafish). Book đi <b>${ctx.moveLabelVN(res.node.vn)}</b>; app đi nước book để tiếp tục biến.`);
+        $('trComment').textContent = nodeNote(res.node);
+        update(parseCoordMove(res.node.iccs));
+        showWhy(res.node, 'book đi');
+        saveCards();
+        setTimeout(step, 1200);
       } else if (res.result === 'retry') {
         Sound.error();
         setFeedback('warn', 'Chưa đúng nước lý thuyết. Anh thử lại một lần nữa.');
@@ -796,12 +1048,16 @@ export function initOpenings(ctx) {
   };
   $('trRestart').onclick = () => (session ? $('trAgain').onclick() : lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle));
   $('trAgain').onclick = () => {
-    if (session?.kind === 'line') return startLine(session.op, session.side, session.lineId);
+    if (session?.kind === 'line' || session?.kind === 'daily') return runLine(session.op, session.side, session.lineId);
     if (session?.kind === 'group') return startGroup(session.op, session.side, session.groupKey);
     if (lastCfg) start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
   };
   $('trNextLine').onclick = () => {
     if (!session) return;
+    if (session.kind === 'daily') {
+      if (session.idx + 1 < session.queue.length) { session.idx++; runDailyItem(); }
+      return;
+    }
     const plan = linePlan(session.op, session.side);
     const id = nextLine(plan, lineProg, session.op, session.side, session.lineId);
     if (id) startLine(session.op, session.side, id);
@@ -835,7 +1091,7 @@ export function initOpenings(ctx) {
     if (op) start(op, side || op.sides[0], mode);
   }
   return { load, renderList, isTraining: () => !!trainer, exit, getOpenings: () => openings, getEdits: () => edits,
-    getCards: () => cards, startReview, trainById, ready: () => openings.length > 0 };
+    getCards: () => cards, startReview, trainById, startDaily, ready: () => openings.length > 0 };
 }
 
 /**

@@ -50,6 +50,7 @@
           <button class="due-tile" id="hmDueEnd"><span class="due-n" id="hmNEnd">–</span><span class="due-l">Tàn cuộc</span><span class="due-s" id="hmSEnd"></span></button>
         </div>
         <p class="muted small" id="hmDueNote"></p>
+        <button class="btn primary" id="hmDaily">▶ Bài luyện hôm nay (khai cuộc, 15–20 phút)</button>
       </div>
       <div class="card">
         <div class="card-head"><h2>Chuỗi ngày luyện</h2><span class="pill" id="hmToday"></span></div>
@@ -85,6 +86,7 @@
   <section class="screen" id="screenOpenings" hidden>
     <div class="op-head">
       <div class="chips" role="group" aria-label="Lọc">
+        <button class="chip" data-filter="rep">★ Bộ của anh</button>
         <button class="chip on" data-filter="book">Book xếp hạng</button>
         <button class="chip" data-filter="all">Tất cả</button>
         <button class="chip" data-filter="theory">Lý thuyết</button>
@@ -94,6 +96,15 @@
         <button class="btn" id="btnNewOpening">＋ Khai cuộc mới</button>
         <button class="btn primary" id="btnReview">Ôn ngẫu nhiên <span class="badge" id="dueBadge"></span></button>
       </div>
+    </div>
+    <div class="card rep-card" id="opRepCard">
+      <div class="card-head"><h2>Bộ khai cuộc của anh</h2><button class="btn small-btn" id="btnRepPick">Chọn bộ khai cuộc</button></div>
+      <p class="small" id="opRepSum">Chưa chọn. Hãy chọn 1 hệ cầm Đỏ và 1–2 phương án cầm Đen — app chỉ đưa các chương đó vào bài luyện hằng ngày.</p>
+      <div class="row wrap">
+        <button class="btn primary" id="btnDaily">▶ Bài luyện hôm nay</button>
+        <button class="btn" id="btnGame">Phân tích ván của anh</button>
+      </div>
+      <p class="muted small" id="opDailySum"></p>
     </div>
     <p class="muted small op-note" id="opNote">Đang tải dữ liệu khai cuộc…</p>
     <div id="opList" class="op-list"></div>
@@ -252,6 +263,12 @@
           <span class="pill" id="trMode">Kiểm tra</span>
         </div>
         <p class="muted small" id="trMeta"></p>
+        <div class="goal" id="trGoal" hidden>
+          <p class="small"><b>Đích đến của biến</b> — bàn cờ đang hiện thế cuối biến. Nhìn kỹ quân nào đứng đâu và kế hoạch tiếp theo, rồi học từng nước để đi tới thế này.</p>
+          <button class="btn primary" id="trGoalGo">Bắt đầu học từ đầu ▸</button>
+          <p class="comment" id="trGoalPlan"></p>
+          <div id="trGoalBox"></div>
+        </div>
         <div class="feedback" id="trFeedback" aria-live="polite"></div>
         <p class="comment" id="trComment"></p>
         <div class="quiz" id="trQuiz" hidden></div>
@@ -378,6 +395,7 @@
       </div>
       <details class="lines-box plan-box" id="opPlanBox" open>
         <summary>Học theo biến — chọn từng biến để học cho thuộc</summary>
+        <label class="set chk small"><input type="checkbox" id="opKeyOnly"><span>Chỉ hỏi <b>nước then chốt</b> khi Kiểm tra (nước thường app tự đi). Nước tương đương — kém nước tốt nhất không đáng kể — luôn được tính đúng.</span></label>
         <div id="opPlan"></div>
       </details>
       <h3 class="opt-sub">Luyện tổng hợp (máy chọn nhánh theo hạng / lịch ôn)</h3>
@@ -436,6 +454,38 @@
   </dialog>
 
   <!-- Hộp thoại xác nhận (thay cho window.confirm) -->
+  <dialog id="dlgRep" class="dlg dlg-wide">
+    <form method="dialog" class="dlg-body">
+      <h2>Bộ khai cuộc của anh</h2>
+      <p class="muted small">Người chơi mạnh không học mọi khai cuộc: họ chọn một bộ và học thật sâu. Gợi ý: cầm Đỏ chọn 1 hệ; cầm Đen chọn 1 phương án chống Pháo đầu + 1 phương án chống khai cuộc mềm (Tiên nhân, Phi tượng, Khởi mã…). Các chương khác vẫn xem và luyện được bình thường.</p>
+      <div class="rep-cols">
+        <fieldset><legend>Cầm Đỏ</legend><div id="repR"></div></fieldset>
+        <fieldset><legend>Cầm Đen</legend><div id="repB"></div></fieldset>
+      </div>
+      <p class="small" id="repCount"></p>
+      <div class="row"><span class="grow"></span><button class="btn" value="cancel">Hủy</button><button class="btn primary" value="save" id="repSave">Lưu bộ khai cuộc</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgGame" class="dlg dlg-wide">
+    <form method="dialog" class="dlg-body">
+      <h2>Phân tích ván của anh so với book</h2>
+      <p class="muted small">Dán biên bản ván anh đã chơi (ký pháp Việt, VD: <code>1. P2-5 M8.7 2. M2.3 X9-8 …</code>, có số thứ tự hay không đều được), hoặc lấy ván đang có ở Bàn cờ tự do. App tìm chỗ anh hoặc đối thủ rời book, chấm bằng engine và gợi ý biến cần học.</p>
+      <textarea id="gameText" rows="4" placeholder="1. P2-5 M8.7 2. M2.3 X9-8 3. X1-2 M2.3 …"></textarea>
+      <div class="row wrap">
+        <span class="opt-label">Anh cầm</span>
+        <div class="seg" role="radiogroup" aria-label="Anh cầm">
+          <label><input type="radio" name="gameSide" value="r" id="gameSideR" checked><span>Đỏ</span></label>
+          <label><input type="radio" name="gameSide" value="b" id="gameSideB"><span>Đen</span></label>
+        </div>
+        <button type="button" class="btn small-btn" id="gameFromFree">Lấy ván ở Bàn cờ</button>
+        <button type="button" class="btn primary" id="gameRun">Phân tích</button>
+      </div>
+      <div id="gameResult" class="game-result"></div>
+      <div class="row"><span class="grow"></span><button class="btn" value="close">Đóng</button></div>
+    </form>
+  </dialog>
+
   <dialog id="dlgConfirm" class="dlg">
     <form method="dialog" class="dlg-body">
       <h2 id="confirmTitle">Xác nhận</h2>

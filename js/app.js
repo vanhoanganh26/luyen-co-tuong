@@ -20,7 +20,7 @@ import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 import { renderAfterOpening } from './modes/after-opening.js';
 
-export const APP_VERSION = '0.9.1';
+export const APP_VERSION = '0.10.0';
 
 const $ = (id) => document.getElementById(id);
 
@@ -421,6 +421,7 @@ const openingsUI = initOpenings({
   editor: editorUI, askConfirm,
   view, store, settings, Sound, toast, showScreen, loadIntoFree, setController, moveLabelVN,
   startPlay: (o) => playUI.startFrom(o),
+  getFreeGame: () => game,
 });
 const playUI = initPlay({
   view, store, settings, Sound, toast, showScreen, setController, moveLabel, moveLabelVN, loadIntoFree, askConfirm,
@@ -465,6 +466,11 @@ const overviewUI = initOverview({
   store, toast, askConfirm, showScreen, leaveModes, moveLabelVN,
   openings: () => openingsUI, positions: () => positionsUI,
 });
+// Bài luyện hôm nay (khai cuộc) từ màn hình Tổng quan
+$('hmDaily').onclick = () => {
+  if (!openingsUI.ready()) { toast('Đang tải dữ liệu khai cuộc…'); return; }
+  leaveModes(); showScreen('openings'); openingsUI.renderList(); openingsUI.startDaily();
+};
 // Mở app vào màn hình Tổng quan; vẽ lại khi dữ liệu khai cuộc / thế cờ tải xong
 overviewUI.enter();
 Promise.all([openingsUI.load(), positionsUI.load()]).then(() => { if (!$('screenHome').hidden) overviewUI.render(); });

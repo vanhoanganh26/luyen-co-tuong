@@ -52,6 +52,9 @@ export class OpeningTrainer {
     // Học theo biến: chỉ đi trong các biến được chọn (lines = [id]); focusLine = biến mới đang mở rộng (ưu tiên)
     this.allowed = opts.lines && opts.lines.length ? new Set(opts.lines) : null;
     this.focus = opts.focusLine || null;
+    // Nước then chốt / nước tương đương (data/keymoves.json: fenKey -> { ok: [iccs], key: 0|1 })
+    this.km = opts.keymoves || null;
+    this.keyOnly = !!opts.keyOnly; // chỉ hỏi nước then chốt, nước thường app tự đi
     this.reset();
   }
 
@@ -73,6 +76,31 @@ export class OpeningTrainer {
 
   /** Các nút con là nước lý thuyết hợp lệ ở thế hiện tại (trong phạm vi biến đang luyện) */
   expected() { return this.node.children.map((k) => this.op.nodes.get(k)).filter((n) => this._inScope(n)); }
+
+  /** Khóa thế hiện tại (bàn + lượt) để tra keymoves */
+  posKey() { return this.pos.fen().split(' ').slice(0, 2).join(' '); }
+
+  /**
+   * Thế hiện tại có phải "nước then chốt" không:
+   *  - chỉ có một nước tốt (nước thứ 2 kém nhiều) — theo keymoves, hoặc
+   *  - nước trừng phạt ngay sau khi đối phương đi nước Yếu/Hớ (book)
+   */
+  isKey() {
+    const last = this.path[this.path.length - 1];
+    if (last && last.by === 'opp') {
+      const g = this.op.info?.[last.node.key]?.grade;
+      if (g === 'weak' || g === 'blunder') return true;
+    }
+    return this.km?.[this.posKey()]?.key === 1;
+  }
+
+  /** Chế độ "chỉ hỏi nước then chốt": app tự đi nước thường. Trả về nút đã đi hoặc null */
+  autoMove() {
+    if (!this.keyOnly || !this.isUserTurn() || this.isKey()) return null;
+    const right = this.mainExpected();
+    this._advance(right, 'user', 'auto');
+    return right;
+  }
 
   /** Nước lý thuyết "chính" để gợi ý (nhánh nặng ký nhất) */
   mainExpected() {
@@ -130,6 +158,17 @@ export class OpeningTrainer {
       if (quality === 5) this.score.correct++; else this.score.retry++;
       this._advance(hit, 'user', quality === 5 ? 'correct' : 'retry-ok');
       return { result: 'correct', node: hit, quality };
+    }
+    // Nước tương đương: kém nước tốt nhất không quá ngưỡng (và thế không phải nước then chốt) => tính đúng,
+    // app đi nước book để tiếp tục biến
+    const km = this.km?.[this.posKey()];
+    if (km && km.ok.includes(iccs) && !this.isKey()) {
+      const quality = this.attempts === 0 ? 5 : 3;
+      this._grade(decisionKey, quality);
+      if (quality === 5) this.score.correct++; else this.score.retry++;
+      const right = this.mainExpected();
+      this._advance(right, 'user', 'equiv');
+      return { result: 'equiv', node: right, played: { ...m, iccs } };
     }
     this.attempts++;
     if (this.attempts < 2) return { result: 'retry' };

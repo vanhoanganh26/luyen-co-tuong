@@ -538,3 +538,23 @@ body.training #btnStart, body.training #btnBack, body.training #btnFwd, body.tra
 .pl-st.done { background: var(--ok-bg); color: var(--ok); }
 .gr-main { background: var(--accent); color: #fff; }
 .opt-sub { font-size: 14px; margin: 14px 0 4px; color: var(--muted); font-weight: 600; }
+
+/* ---------- Bộ khai cuộc, bài luyện hôm nay, đích đến, phân tích ván (0.10) ---------- */
+.rep-card { margin-bottom: 10px; }
+.rep-card .card-head h2 { font-size: 17px; }
+.rep-cols { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .rep-cols { grid-template-columns: 1fr 1fr; } }
+.rep-cols fieldset { border: 1px solid var(--border); border-radius: 12px; padding: 6px 10px; margin: 0; }
+.rep-cols legend { font-weight: 700; padding: 0 4px; }
+.rep-cols label { display: flex; align-items: center; gap: 8px; min-height: 36px; font-size: 14px; }
+.rep-cols input { width: 20px; height: 20px; accent-color: var(--accent); flex: 0 0 auto; }
+.op-card .star { color: var(--accent); font-weight: 700; }
+.goal { border: 1px dashed var(--accent); border-radius: 12px; padding: 8px 10px; margin: 6px 0; display: grid; gap: 6px; }
+.gr-key { background: #fff3c4; color: #7a5600; }
+.pl-reach { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pl-st.due { background: var(--info-bg); color: var(--text); border: 1px solid var(--accent); }
+#gameText { width: 100%; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); padding: 8px; font: inherit; }
+.game-result { display: grid; gap: 6px; margin-top: 8px; }
+.game-result .moves-line { font-size: 14px; line-height: 1.6; }
+.game-result .in-book { color: var(--ok); font-weight: 600; }
+.game-result .out-book { color: var(--bad); font-weight: 700; text-decoration: underline; }
