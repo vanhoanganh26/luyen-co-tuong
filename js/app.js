@@ -19,7 +19,7 @@ import { initThink } from './modes/think.js';
 import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 
-export const APP_VERSION = '0.8.3';
+export const APP_VERSION = '0.8.4';
 
 const $ = (id) => document.getElementById(id);
 
@@ -445,7 +445,21 @@ Promise.all([openingsUI.load(), positionsUI.load()]).then(() => { if (!$('screen
 // Service worker: chỉ đăng ký khi chạy qua http(s) (GitHub Pages / máy chủ thử)
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !window.__XQT_PREVIEW__) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(async () => {
+    // Có bản mới: service worker mới nắm quyền => tải lại trang 1 lần để dùng ngay bản mới
+    // (lần cài đầu tiên cũng phát sự kiện này — khi đó trang chưa có SW cũ nên bỏ qua)
+    let prevController = navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      const had = !!prevController;
+      prevController = navigator.serviceWorker.controller;
+      if (!had || reloading) return;
+      reloading = true;
+      toast('Đã có bản mới — đang tải lại app…');
+      setTimeout(() => location.reload(), 900);
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(async (reg) => {
+      // App cài trên điện thoại thường chạy nền lâu: mỗi lần mở lại thì kiểm tra bản mới
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
       // Có file Fairy-Stockfish mà trang chưa "cross-origin isolated" => tải lại 1 lần để service worker gắn header
       if (self.crossOriginIsolated) return;
       try {

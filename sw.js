@@ -6,7 +6,7 @@
 // trên GitHub Pages (nơi không tự đặt header được).
 // File engine (thư mục engine/) được cache tự động ở lần dùng đầu tiên.
 // =====================================================================
-const CACHE_VERSION = 'xqt-v0.8.3';
+const CACHE_VERSION = 'xqt-v0.8.4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -62,7 +62,9 @@ const ENGINE_FILES = ['./engine/stockfish.js', './engine/stockfish.wasm', './eng
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then((c) => c.addAll(APP_SHELL).then(() => Promise.allSettled(ENGINE_FILES.map((f) => c.add(f)))))
+      // cache: 'reload' = luôn lấy bản mới từ máy chủ, không dùng bản cũ trong bộ nhớ đệm HTTP của trình duyệt
+      .then((c) => c.addAll(APP_SHELL.map((u) => new Request(u, { cache: 'reload' })))
+        .then(() => Promise.allSettled(ENGINE_FILES.map((f) => c.add(new Request(f, { cache: 'reload' }))))))
       .then(() => self.skipWaiting())
   );
 });
