@@ -15,6 +15,7 @@ import { analyzeMove, purposeQuiz } from '../train/move-insight.js';
 import { whyHTML, loadInsights } from './why.js';
 import { renderAfterOpening } from './after-opening.js';
 import { deserializeOpening, sideToMoveAt } from '../train/opening-tree.js';
+import { linePlan, lineKey, recordRun, nextLine, groupSet, MASTER_STREAK } from '../train/line-plan.js';
 
 /** Tên hạng nước trong book (khớp tools/build-book.mjs) */
 export const GRADE_NAME = { best: 'Mạnh nhất', good: 'Tốt', ok: 'Chơi được', weak: 'Yếu', blunder: 'Hớ' };
@@ -31,6 +32,9 @@ export function initOpenings(ctx) {
   let filter = 'book';
   let bookChapters = [];         // các chương book (data/book.built.json)
   let bookMeta = null;
+  let lineProg = store.getJSON('lineProgress', {}) || {};   // tiến độ "Học theo biến"
+  const saveLineProg = () => store.setJSON('lineProgress', lineProg);
+  let session = null;            // { kind: 'line'|'group', op, side, lineId?, groupKey? } khi đang học theo biến
   let trainer = null;
   let busy = false;              // đang chờ máy đi
   let lastCfg = null;            // { op, side, mode } của lần luyện gần nhất
@@ -188,6 +192,7 @@ export function initOpenings(ctx) {
       (store.getJSON('lastOpp', 'book') === 'strange' ? $('opOppStrange') : $('opOppBook')).checked = true;
       renderBookTree(op, '');
     }
+    renderPlan(op, currentSide(op));
     $('opLineCount').textContent = op.lines.length;
     const ol = $('opLines');
     ol.innerHTML = '';
@@ -237,6 +242,106 @@ export function initOpenings(ctx) {
     $('opStart').disabled = !op.lines.length;
     $('dlgOpening').returnValue = '';
     if (!$('dlgOpening').open) $('dlgOpening').showModal();
+  }
+
+  // ---------- Học theo biến ----------
+  function currentSide(op) {
+    const v = document.querySelector('input[name="opSide"]:checked')?.value;
+    return op.sides.includes(v) ? v : op.sides[0];
+  }
+  ['opSideR', 'opSideB'].forEach((id) => $(id).addEventListener('change', () => { if (selected) renderPlan(selected, currentSide(selected)); }));
+
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  /** Tên ngắn của biến (bỏ hậu tố hạng vì đã có huy hiệu) */
+  const shortName = (l) => l.name.replace(/ — (Mạnh nhất|Tốt|Chơi được|Yếu|Hớ)$/, '');
+  function progOf(op, side, id) { return lineProg[lineKey(op.id, side, id)] || null; }
+  function stateHTML(p) {
+    if (!p) return '<span class="pl-st new" title="Chưa học">•</span>';
+    if (p.mastered) return '<span class="pl-st done" title="Đã thuộc">✓</span>';
+    return `<span class="pl-st doing" title="Đúng liên tiếp ${p.streak}/${MASTER_STREAK}">${p.streak}/${MASTER_STREAK}</span>`;
+  }
+
+  function renderPlan(op, side) {
+    const box = $('opPlan');
+    const plan = linePlan(op, side);
+    const real = plan.order.length;
+    const done = plan.order.filter((id) => progOf(op, side, id)?.mastered).length;
+    const nxt = nextLine(plan, lineProg, op, side);
+    const nxtLine = nxt && op.lines.find((l) => l.id === nxt);
+    const nxtGroup = nxt && plan.groups.find((g) => g.lines.some((x) => x.line.id === nxt));
+    let html = `<p class="small">Đã thuộc <b>${done}/${real}</b> biến (thuộc = đi đúng hết ${MASTER_STREAK} lần liên tiếp ở chế độ Kiểm tra). Lần đầu học một biến: có gợi ý; từ lần sau: không gợi ý.</p>`;
+    if (nxtLine) html += `<button type="button" class="btn primary plan-next" data-learn="${esc(nxt)}">▶ Học tiếp: ${esc(shortName(nxtLine))}</button>`;
+    else if (real) html += '<p class="small"><b>Anh đã thuộc mọi biến của chương này.</b> Dùng "Luyện tổng hợp" để ôn.</p>';
+    if (plan.branch.key) {
+      const keys = plan.branch.key.split(' ');
+      html += `<p class="muted small">Các biến chung phần đầu: ${keys.map((_, i) => (i % 2 === 0 ? `${i / 2 + 1}.` : '') + ctx.moveLabelVN(op.nodes.get(keys.slice(0, i + 1).join(' ')).vn)).join(' ')} — rồi rẽ nhánh:</p>`;
+    }
+    for (const g of plan.groups) {
+      const gl = g.lines.filter((x) => !x.link);
+      const gDone = gl.filter((x) => progOf(op, side, x.line.id)?.mastered).length;
+      const inf = g.info;
+      const badge = inf ? `<span class="gr gr-${inf.grade}">${GRADE_NAME[inf.grade]}</span>` : '';
+      const games = inf?.games ? ` <span class="small">${inf.games} ván cao thủ</span>` : '';
+      const onlyLink = !gl.length && g.lines[0]?.link;
+      html += `<details class="plan-group"${g === nxtGroup ? ' open' : ''}><summary><b>${esc(g.vn ? g.label.replace(g.vn, ctx.moveLabelVN(g.vn)) : g.label)}</b> ${badge}${games}<span class="grow"></span><span class="small muted">${onlyLink ? '→ chương khác' : `thuộc ${gDone}/${gl.length}`}</span></summary>`;
+      if (onlyLink) {
+        html += `<p class="small">Nước này dẫn sang chương <b>${esc(g.lines[0].link.name)}</b>.</p><button type="button" class="btn small-btn" data-open="${esc(g.lines[0].link.id)}">Mở chương "${esc(g.lines[0].link.name)}" ▸</button>`;
+      } else {
+        html += '<ol class="plan-lines">';
+        const SHOW = 8;
+        let shown = 0, hidden = 0;
+        for (const x of g.lines) {
+          // Hiện 8 biến quan trọng nhất (+ biến đang học), còn lại ẩn sau nút "Xem thêm"
+          const more = shown >= SHOW && x.line.id !== nxt;
+          if (more) hidden++; else shown++;
+          const cls = more ? ' more' : '';
+          if (x.link) {
+            html += `<li class="plan-line link${cls}"${more ? ' hidden' : ''}><span class="pl-st">→</span><span>${esc(shortName(x.line))}</span><span class="grow"></span><button type="button" class="btn small-btn" data-open="${esc(x.link.id)}">Mở chương ▸</button></li>`;
+            continue;
+          }
+          const dev = x.rank[0] > 0 ? Object.keys(GRADE_NAME)[x.rank[0] - 1] : null;
+          const p = progOf(op, side, x.line.id);
+          html += `<li class="plan-line${cls}${p?.mastered ? ' done' : ''}${x.line.id === nxt ? ' cur' : ''}"${more ? ' hidden' : ''}>${stateHTML(p)}<span class="pl-name">${esc(shortName(x.line))}${dev ? ` <span class="gr gr-${dev}">${GRADE_NAME[dev]}</span>` : ' <span class="gr gr-main">Chính biến</span>'}${-x.rank[1] > 0 && dev ? ` <span class="small muted">${-x.rank[1]} ván</span>` : ''}</span><span class="grow"></span><button type="button" class="btn small-btn" data-learn="${esc(x.line.id)}">Học</button></li>`;
+        }
+        html += '</ol>';
+        if (hidden) html += `<button type="button" class="btn small-btn plan-more">Xem thêm ${hidden} biến (nước ít quan trọng hơn) ▾</button> `;
+        if (gl.length > 1) {
+          const gs = groupSet(g, lineProg, op, side);
+          const label = gs.lines.length > 1 ? `Ôn nhóm: ${gs.lines.length - (gs.focus ? 1 : 0)} biến đã thuộc${gs.focus ? ' + 1 biến mới' : ''}` : '';
+          if (label) html += `<button type="button" class="btn small-btn" data-group="${esc(g.key)}">${label} ▸</button>`;
+        }
+      }
+      html += '</details>';
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('.plan-more').forEach((b) => { b.onclick = () => { b.parentElement.querySelectorAll('.plan-line.more').forEach((li) => { li.hidden = false; }); b.remove(); }; });
+    box.querySelectorAll('[data-learn]').forEach((b) => { b.onclick = () => { $('dlgOpening').close('plan'); startLine(op, side, b.dataset.learn); }; });
+    box.querySelectorAll('[data-group]').forEach((b) => { b.onclick = () => { $('dlgOpening').close('plan'); startGroup(op, side, b.dataset.group); }; });
+    box.querySelectorAll('[data-open]').forEach((b) => {
+      b.onclick = () => {
+        const t = openings.find((o) => (o.kind === op.kind && (o.bookOf || o.id) === b.dataset.open && (o.kind !== 'book' || o.bookSide === side)));
+        if (t) openDialog(t);
+      };
+    });
+  }
+
+  /** Học một biến: máy chỉ đi đúng biến đó. Lần đầu có gợi ý, các lần sau kiểm tra */
+  function startLine(op, side, lineId) {
+    const p = progOf(op, side, lineId);
+    const mode = p && p.runs ? 'test' : 'learn';
+    session = { kind: 'line', op, side, lineId };
+    start(op, side, mode, 'book', { lines: [lineId], focusLine: lineId });
+    const l = op.lines.find((x) => x.id === lineId);
+    toast(`${mode === 'learn' ? 'Học mới (có gợi ý)' : 'Kiểm tra'}: ${l ? shortName(l) : ''}`);
+  }
+  /** Ôn cả nhóm, mở rộng dần: các biến đã thuộc + 1 biến mới */
+  function startGroup(op, side, groupKey) {
+    const plan = linePlan(op, side);
+    const g = plan.groups.find((x) => x.key === groupKey);
+    if (!g) return;
+    const gs = groupSet(g, lineProg, op, side);
+    session = { kind: 'group', op, side, groupKey, focus: gs.focus };
+    start(op, side, 'test', 'book', { lines: gs.lines, focusLine: gs.focus });
   }
 
   // ---------- Cây book: duyệt các nước, đối phương xếp từ mạnh đến yếu ----------
@@ -391,11 +496,13 @@ export function initOpenings(ctx) {
   }
 
   // ---------- Luyện ----------
-  function start(op, side, mode, oppStyle = 'book') {
-    lastCfg = { op, side, mode, oppStyle };
+  function start(op, side, mode, oppStyle = 'book', scope = null) {
+    if (!scope) session = null; // luyện tổng hợp: thoát "Học theo biến"
+    lastCfg = { op, side, mode, oppStyle, scope };
+    $('trNextLine').hidden = true;
     purpose = mode === 'purpose';
     // Chế độ "Đoán ý đồ" không chấm lịch ôn (SRS) — dùng bộ thẻ tạm
-    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards, oppStyle });
+    trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards, oppStyle, ...(scope || {}) });
     $('trMode').title = '';
     quizScore = { right: 0, total: 0 };
     loadInsights();
@@ -404,7 +511,7 @@ export function initOpenings(ctx) {
     ctx.showScreen('train');
     if (view.flipped !== (side === 'b')) view.setFlipped(side === 'b');
     $('trName').textContent = op.name;
-    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '');
+    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '') + (session ? (session.kind === 'line' ? ' · 1 biến' : ' · ôn nhóm') : '');
     $('trMode').className = 'pill ' + (mode === 'test' ? 'test' : 'learn');
     $('trReveal').hidden = purpose;
     $('trQuiz').hidden = true;
@@ -585,7 +692,25 @@ export function initOpenings(ctx) {
     }
     $('trSummary').innerHTML = `<b>${line ? line.name : 'Biến'}</b>: đúng ngay ${t.score.correct}/${total}, đúng ở lần 2: ${t.score.retry}, sai: ${t.score.wrong}.`;
     $('trPlan').textContent = line && line.plan ? 'Kế hoạch trung cuộc (soạn sẵn): ' + line.plan : '';
-    setFeedback(t.score.wrong ? 'warn' : 'ok', (t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!') + AO_LINK);
+    let planMsg = '';
+    if (session && line) {
+      // Ghi tiến độ "Học theo biến" cho biến vừa đi hết
+      const k = lineKey(session.op.id, session.side, line.id);
+      const before = lineProg[k];
+      const p = recordRun(before, { mode: t.mode, wrong: t.score.wrong, retry: t.score.retry });
+      lineProg[k] = p; saveLineProg();
+      const plan = linePlan(session.op, session.side);
+      const nid = nextLine(plan, lineProg, session.op, session.side, line.id);
+      const nl = nid && session.op.lines.find((x) => x.id === nid);
+      if (p.mastered && !before?.mastered) planMsg = `<br><b>✓ Đã thuộc biến này!</b>${nl ? ' Biến tiếp theo: ' + shortName(nl) + '.' : ' Anh đã thuộc mọi biến của chương.'}`;
+      else if (p.mastered) planMsg = '<br>Biến này anh đã thuộc.';
+      else if (t.mode === 'learn') planMsg = `<br>Lần sau là <b>Kiểm tra</b> (không gợi ý): đi đúng hết ${MASTER_STREAK} lần liên tiếp là thuộc.`;
+      else planMsg = `<br>Đúng hết liên tiếp: <b>${p.streak}/${MASTER_STREAK}</b>${t.score.wrong || t.score.retry ? ' — còn nước chưa chắc, luyện lại nhé.' : '.'}`;
+      $('trNextLine').hidden = !(nl && (p.mastered || session.kind === 'group'));
+      $('trNextLine').textContent = nl ? `Biến tiếp theo: ${shortName(nl)} ▸` : 'Biến tiếp theo ▸';
+      $('trAgain').textContent = session.kind === 'group' ? 'Ôn nhóm lần nữa' : p.mastered ? 'Luyện lại biến này' : 'Luyện lại (Kiểm tra)';
+    } else $('trAgain').textContent = 'Luyện tiếp';
+    setFeedback(t.score.wrong ? 'warn' : 'ok', (t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!') + planMsg + AO_LINK);
     Sound.end();
   }
 
@@ -669,8 +794,18 @@ export function initOpenings(ctx) {
     saveCards();
     setTimeout(step, 1200);
   };
-  $('trRestart').onclick = () => lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
-  $('trAgain').onclick = () => lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
+  $('trRestart').onclick = () => (session ? $('trAgain').onclick() : lastCfg && start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle));
+  $('trAgain').onclick = () => {
+    if (session?.kind === 'line') return startLine(session.op, session.side, session.lineId);
+    if (session?.kind === 'group') return startGroup(session.op, session.side, session.groupKey);
+    if (lastCfg) start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
+  };
+  $('trNextLine').onclick = () => {
+    if (!session) return;
+    const plan = linePlan(session.op, session.side);
+    const id = nextLine(plan, lineProg, session.op, session.side, session.lineId);
+    if (id) startLine(session.op, session.side, id);
+  };
   $('trNextReview').onclick = () => startReview();
   $('trExit').onclick = () => exit();
   $('trToPlay').onclick = () => {

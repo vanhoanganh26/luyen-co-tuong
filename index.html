@@ -271,6 +271,7 @@
         <p class="comment" id="trPlan"></p>
         <div class="ao" id="trAnalysis"></div>
         <div class="row wrap">
+          <button class="btn primary" id="trNextLine" hidden>Biến tiếp theo ▸</button>
           <button class="btn primary" id="trAgain">Luyện tiếp</button>
           <button class="btn" id="trNextReview">Ôn ngẫu nhiên</button>
           <button class="btn" id="trToPlay">Đánh tiếp với máy</button>
@@ -375,6 +376,11 @@
           <label><input type="radio" name="opSide" value="b" id="opSideB"><span>Đen — đi sau</span></label>
         </div>
       </div>
+      <details class="lines-box plan-box" id="opPlanBox" open>
+        <summary>Học theo biến — chọn từng biến để học cho thuộc</summary>
+        <div id="opPlan"></div>
+      </details>
+      <h3 class="opt-sub">Luyện tổng hợp (máy chọn nhánh theo hạng / lịch ôn)</h3>
       <div class="opt-group">
         <span class="opt-label">Chế độ</span>
         <div class="seg" role="radiogroup" aria-label="Chế độ luyện">
@@ -390,7 +396,7 @@
           <label><input type="radio" name="opOpp" value="strange" id="opOppStrange"><span>Chơi lạ (hay đi nước yếu — tập trừng phạt)</span></label>
         </div>
       </div>
-      <details class="lines-box" id="opBookBox" hidden open>
+      <details class="lines-box" id="opBookBox" hidden>
         <summary>Cây book: nước đối phương xếp từ mạnh đến yếu</summary>
         <div id="opBook" class="book-tree"></div>
       </details>
@@ -405,7 +411,7 @@
       <p class="muted small" id="opSource"></p>
       <div class="row"><span class="grow"></span>
         <button class="btn" value="cancel">Đóng</button>
-        <button class="btn primary" value="start" id="opStart">Bắt đầu luyện</button>
+        <button class="btn primary" value="start" id="opStart">Luyện tổng hợp (máy chọn nhánh)</button>
       </div>
     </form>
   </dialog>

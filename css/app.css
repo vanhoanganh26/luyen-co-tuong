@@ -516,3 +516,25 @@ body.training #btnStart, body.training #btnBack, body.training #btnFwd, body.tra
 .gr-ok { background: var(--info-bg); color: var(--text); border: 1px solid var(--border); }
 .gr-weak { background: var(--warn-bg); color: var(--warn); }
 .gr-blunder { background: var(--bad-bg); color: var(--bad); }
+
+/* ---------- Học theo biến ---------- */
+.plan-box > div { display: grid; gap: 8px; }
+.plan-next { width: 100%; white-space: normal; height: auto; min-height: 44px; text-align: left; }
+.plan-group { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 0 10px; }
+.plan-group > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 44px; cursor: pointer; list-style: none; }
+.plan-group > summary::-webkit-details-marker { display: none; }
+.plan-group > summary::before { content: '▸'; color: var(--muted); }
+.plan-group[open] > summary::before { content: '▾'; }
+.plan-group[open] { padding-bottom: 8px; }
+.plan-lines { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
+.plan-line { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; font-size: 14px; }
+.plan-line.cur { background: var(--surface-2); outline: 1px solid var(--accent); }
+.plan-line.done .pl-name { color: var(--muted); }
+.plan-line .btn { flex: 0 0 auto; }
+.pl-name { flex: 1 1 auto; }
+.pl-st { flex: 0 0 auto; min-width: 30px; text-align: center; font-weight: 700; font-size: 13px; border-radius: 999px; padding: 1px 4px; }
+.pl-st.new { color: var(--muted); }
+.pl-st.doing { background: var(--warn-bg); color: var(--warn); }
+.pl-st.done { background: var(--ok-bg); color: var(--ok); }
+.gr-main { background: var(--accent); color: #fff; }
+.opt-sub { font-size: 14px; margin: 14px 0 4px; color: var(--muted); font-weight: 600; }

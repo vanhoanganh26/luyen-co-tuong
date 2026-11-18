@@ -49,6 +49,9 @@ export class OpeningTrainer {
     this.rng = opts.rng || Math.random;
     this.now = opts.now || (() => Date.now());
     this.oppStyle = opts.oppStyle || 'book';
+    // Học theo biến: chỉ đi trong các biến được chọn (lines = [id]); focusLine = biến mới đang mở rộng (ưu tiên)
+    this.allowed = opts.lines && opts.lines.length ? new Set(opts.lines) : null;
+    this.focus = opts.focusLine || null;
     this.reset();
   }
 
@@ -63,10 +66,13 @@ export class OpeningTrainer {
   /** Bên phải đi ở nút hiện tại */
   turnSide() { return sideToMoveAt(this.op, this.node); }
   isUserTurn() { return !this.isEnd() && this.turnSide() === this.side; }
-  isEnd() { return this.node.children.length === 0; }
+  isEnd() { return this.expected().length === 0; }
 
-  /** Các nút con là nước lý thuyết hợp lệ ở thế hiện tại */
-  expected() { return this.node.children.map((k) => this.op.nodes.get(k)); }
+  /** Nút có thuộc các biến đang luyện không */
+  _inScope(n) { return !this.allowed || n.lineIds.some((id) => this.allowed.has(id)); }
+
+  /** Các nút con là nước lý thuyết hợp lệ ở thế hiện tại (trong phạm vi biến đang luyện) */
+  expected() { return this.node.children.map((k) => this.op.nodes.get(k)).filter((n) => this._inScope(n)); }
 
   /** Nước lý thuyết "chính" để gợi ý (nhánh nặng ký nhất) */
   mainExpected() {
@@ -93,7 +99,9 @@ export class OpeningTrainer {
       // Trọng số gốc của biến (book: theo hạng nước) × ưu tiên nhánh hay sai × ưu tiên nhánh đến hạn ôn
       const inf = this.op.info?.[k.key];
       const base = inf ? (this.oppStyle === 'strange' ? (STRANGE_W[inf.grade] ?? 1) : inf.w) : Math.max(0.01, k.weight);
-      return base * (1 + 3 * errRate) * (1 + dueRate);
+      // Mở rộng dần: biến mới trong nhóm được gặp nhiều hơn
+      const focus = this.focus && k.lineIds.includes(this.focus) ? 3 : 1;
+      return base * (1 + 3 * errRate) * (1 + dueRate) * focus;
     });
     const sum = weights.reduce((a, b) => a + b, 0);
     let r = this.rng() * sum, pick = kids[kids.length - 1];
@@ -157,7 +165,8 @@ export class OpeningTrainer {
 
   /** Biến (line) mà vị trí hiện tại thuộc về — để hiện tên biến và kế hoạch */
   currentLine() {
-    const id = this.node.lineIds[0];
+    if (this.allowed && this.allowed.size === 1) { const only = [...this.allowed][0]; return this.op.lines.find((l) => l.id === only) || null; }
+    const id = this.node.lineIds.find((x) => !this.allowed || this.allowed.has(x)) || this.node.lineIds[0];
     return this.op.lines.find((l) => l.id === id) || null;
   }
 }
