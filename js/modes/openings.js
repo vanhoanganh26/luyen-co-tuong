@@ -346,12 +346,38 @@ export function initOpenings(ctx) {
   }
 
   /** Học một biến: máy chỉ đi đúng biến đó. Lần đầu: xem đích đến rồi học có gợi ý; các lần sau: Kiểm tra */
-  function runLine(op, side, lineId) {
+  /** Số nước then chốt của anh trên một biến (theo keymoves + nước trừng phạt sau nước Yếu/Hớ) */
+  function keyCount(op, side, lineId) {
+    const line = op.lines.find((l) => l.id === lineId);
+    if (!line || !keymoves) return 0;
+    const keys = line.lastKey.split(' ');
+    const p = new Position(op.startFen);
+    let n = 0, prevGrade = null;
+    for (let i = 0; i < keys.length; i++) {
+      const node = op.nodes.get(keys.slice(0, i + 1).join(' '));
+      if (p.turn === side) {
+        const km = keymoves[p.fen().split(' ').slice(0, 2).join(' ')];
+        if (km?.key === 1 || prevGrade === 'weak' || prevGrade === 'blunder') n++;
+        prevGrade = null;
+      } else prevGrade = op.info?.[node.key]?.grade || null;
+      p.makeMove(parseCoordMove(keys[i]));
+    }
+    return n;
+  }
+
+  /**
+   * Học một biến: máy chỉ đi đúng biến đó.
+   * Lần đầu: xem đích đến rồi học có gợi ý; các lần sau: Kiểm tra. forceMode = 'learn' để học lại có gợi ý.
+   * "Chỉ hỏi nước then chốt" chỉ áp dụng khi ôn biến ĐÃ THUỘC và biến có ít nhất 1 nước then chốt.
+   */
+  function runLine(op, side, lineId, forceMode = null) {
     const p = progOf(op, side, lineId);
-    const mode = p && p.runs ? 'test' : 'learn';
-    start(op, side, mode, 'book', { lines: [lineId], focusLine: lineId, goal: mode === 'learn' });
+    const mode = forceMode || (p && p.runs ? 'test' : 'learn');
+    const nKey = keyCount(op, side, lineId);
+    const keyOnly = mode === 'test' && !!store.getJSON('keyOnly', false) && !!p?.mastered && nKey > 0;
+    start(op, side, mode, 'book', { lines: [lineId], focusLine: lineId, goal: mode === 'learn' && !p?.runs, keyOnly });
     const l = op.lines.find((x) => x.id === lineId);
-    toast(`${mode === 'learn' ? 'Học mới (có gợi ý)' : 'Kiểm tra'}: ${l ? shortName(l) : ''}`);
+    toast(`${mode === 'learn' ? 'Học (có gợi ý)' : keyOnly ? `Ôn ${nKey} nước then chốt` : 'Kiểm tra'}: ${l ? shortName(l) : ''}`);
   }
   function startLine(op, side, lineId) {
     session = { kind: 'line', op, side, lineId };
@@ -675,10 +701,11 @@ export function initOpenings(ctx) {
     lastCfg = { op, side, mode, oppStyle, scope };
     busy = false;
     $('trNextLine').hidden = true;
+    $('trRelearn').hidden = true;
     purpose = mode === 'purpose';
     // Chế độ "Đoán ý đồ" không chấm lịch ôn (SRS) — dùng bộ thẻ tạm
     trainer = new OpeningTrainer(op, { side, mode: purpose ? 'learn' : mode, cards: purpose ? {} : cards, oppStyle, keymoves,
-      keyOnly: mode === 'test' && !!store.getJSON('keyOnly', false), ...(scope || {}) });
+      ...(scope || {}), keyOnly: !!scope?.keyOnly });
     $('trMode').title = '';
     quizScore = { right: 0, total: 0 };
     loadInsights();
@@ -688,7 +715,7 @@ export function initOpenings(ctx) {
     if (view.flipped !== (side === 'b')) view.setFlipped(side === 'b');
     $('trName').textContent = op.name;
     const sessTxt = !session ? '' : session.kind === 'line' ? ' · 1 biến' : session.kind === 'group' ? ' · ôn nhóm' : ` · bài hôm nay ${session.idx + 1}/${session.queue.length}`;
-    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '') + (mode === 'test' && store.getJSON('keyOnly', false) ? ' · chỉ nước then chốt' : '') + sessTxt;
+    $('trMode').textContent = (mode === 'learn' ? 'Học mới' : purpose ? 'Đoán ý đồ' : 'Kiểm tra') + (op.kind === 'book' && oppStyle === 'strange' ? ' · đối phương chơi lạ' : '') + (scope?.keyOnly ? ' · chỉ nước then chốt' : '') + sessTxt;
     $('trMode').className = 'pill ' + (mode === 'test' ? 'test' : 'learn');
     $('trReveal').hidden = purpose;
     $('trQuiz').hidden = true;
@@ -841,7 +868,7 @@ export function initOpenings(ctx) {
     st.className = 'status' + (checkSq >= 0 ? ' check' : '');
     st.textContent = t.isEnd() ? 'Hết biến' : t.isUserTurn() ? `Lượt anh (${t.side === 'r' ? 'Đỏ' : 'Đen'})${checkSq >= 0 ? ' — đang bị chiếu!' : ''}` : 'Máy đang đi…';
     const line = t.currentLine();
-    const done = t.path.filter((p) => p.by === 'user').length;
+    const done = t.path.filter((p) => p.by === 'user' && p.result !== 'auto').length;
     // Cảnh báo nếu nước vừa đi bị engine gắn cờ trong biến này
     const loss = line?.verification?.engineLoss?.[t.path.length - 1];
     const warnEl = document.getElementById('trEngineWarn');
@@ -923,8 +950,10 @@ export function initOpenings(ctx) {
       // Ghi tiến độ "Học theo biến" cho biến vừa đi hết
       const k = lineKey(session.op.id, session.side, line.id);
       const before = lineProg[k];
-      const p = recordRun(before, { mode: t.mode, wrong: t.score.wrong, retry: t.score.retry });
-      lineProg[k] = p; saveLineProg();
+      const answered = t.score.correct + t.score.retry + t.score.wrong;
+      // Không có nước nào anh tự đi (VD toàn nước app tự đi) => không tính là một lượt Kiểm tra
+      const p = answered ? recordRun(before, { mode: t.mode, wrong: t.score.wrong, retry: t.score.retry }) : (before || { runs: 0, streak: 0 });
+      if (answered) { lineProg[k] = p; saveLineProg(); }
       const plan = linePlan(session.op, session.side);
       const nid = nextLine(plan, lineProg, session.op, session.side, line.id);
       const nl = nid && session.op.lines.find((x) => x.id === nid);
@@ -934,6 +963,7 @@ export function initOpenings(ctx) {
       else if (t.mode === 'learn') planMsg = `<br>Lần sau là <b>Kiểm tra</b> (không gợi ý). Thuộc = đi đúng hết ở ${MASTER_STREAK} ngày khác nhau.`;
       else if (!t.score.wrong && !t.score.retry) planMsg = `<br>Đúng hết! Đã nhớ đúng <b>${days}</b>${p.streak < MASTER_STREAK ? ' — kiểm tra lại vào ngày mai để tính là thuộc (nhớ lâu, không phải nhớ tạm).' : '.'}`;
       else planMsg = `<br>Còn nước chưa chắc — chuỗi nhớ đúng về 0. Luyện lại nhé.`;
+      if (!answered) planMsg = '<br>Lượt này anh không phải tự đi nước nào nên không tính vào tiến độ.';
       if (session.kind === 'daily') {
         const left = session.queue.length - session.idx - 1;
         $('trNextLine').hidden = left <= 0;
@@ -942,13 +972,16 @@ export function initOpenings(ctx) {
           planMsg += '<br><b>🎉 Xong bài luyện hôm nay!</b> Nên bấm "Đánh tiếp với máy" để thử đánh tiếp từ cuối biến vừa học.';
           logActivity(store, 'daily');
         }
-        $('trAgain').textContent = 'Luyện lại biến này';
+        $('trAgain').textContent = 'Kiểm tra lại biến này';
+        $('trRelearn').hidden = false;
       } else {
+        $('trRelearn').hidden = false;
         $('trNextLine').hidden = !(nl && (p.mastered || session.kind === 'group' || t.mode === 'test'));
         $('trNextLine').textContent = nl ? `Biến tiếp theo: ${shortName(nl)} ▸` : 'Biến tiếp theo ▸';
-        $('trAgain').textContent = session.kind === 'group' ? 'Ôn nhóm lần nữa' : p.mastered ? 'Luyện lại biến này' : 'Luyện lại (Kiểm tra)';
+        $('trAgain').textContent = session.kind === 'group' ? 'Ôn nhóm lần nữa' : 'Kiểm tra lại (không gợi ý)';
+        if (session.kind === 'group') $('trRelearn').hidden = true;
       }
-    } else $('trAgain').textContent = 'Luyện tiếp';
+    } else { $('trAgain').textContent = 'Luyện tiếp'; $('trRelearn').hidden = true; }
     setFeedback(t.score.wrong ? 'warn' : 'ok', (t.score.wrong ? 'Hết biến. Những nước sai sẽ được đưa vào lịch ôn sớm.' : 'Hết biến — anh đi đúng hết!') + planMsg + AO_LINK);
     Sound.end();
   }
@@ -1051,6 +1084,10 @@ export function initOpenings(ctx) {
     if (session?.kind === 'line' || session?.kind === 'daily') return runLine(session.op, session.side, session.lineId);
     if (session?.kind === 'group') return startGroup(session.op, session.side, session.groupKey);
     if (lastCfg) start(lastCfg.op, lastCfg.side, lastCfg.mode, lastCfg.oppStyle);
+  };
+  // Học lại biến vừa đi, có gợi ý (không tính là lượt Kiểm tra)
+  $('trRelearn').onclick = () => {
+    if (session?.lineId) runLine(session.op, session.side, session.lineId, 'learn');
   };
   $('trNextLine').onclick = () => {
     if (!session) return;
