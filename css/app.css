@@ -856,3 +856,27 @@ body.board-mode #screenBoard .status { white-space: nowrap; overflow: hidden; te
 .si-main { grid-area: main; font-weight: 600; font-size: 14px; }
 .si-date { grid-area: date; color: var(--muted); font-size: 12px; }
 .moves { align-content: start; }
+
+/* ---- 0.11.2: điện thoại — màn luyện có nút ← nên ẩn thanh điều hướng đáy để bảng dưới bàn cờ cao thêm ~60px;
+   hàng nút hành động gọn lại (cao 40px) để không che chữ ---- */
+@media (max-width: 899px) {
+  body.board-mode.scr-train .tabs, body.board-mode.scr-pos .tabs, body.board-mode.scr-thinkpos .tabs { display: none; }
+  body.board-mode .panel .card { padding: 10px 12px 12px; }
+  body.board-mode .panel .card-head { margin-bottom: 4px; }
+  body.board-mode .actbar { margin: 8px -12px -12px; padding: 6px 12px 8px; gap: 8px; box-shadow: 0 -6px 12px -8px rgba(0, 0, 0, .18); }
+  body.board-mode .actbar .btn { height: 40px; font-size: 15px; border-radius: 10px; }
+  body.board-mode .panel .feedback { padding: 8px 10px; margin: 6px 0; }
+  body.board-mode .pz-extra .btn { height: 38px; }
+}
+@media (max-width: 899px) {
+  /* Thanh nút dính sát đáy khung (không chừa khe để chữ lọt xuống dưới nút) */
+  body.board-mode #screenBoard > .panel { padding-bottom: 0; gap: 8px; }
+  body.board-mode .actbar { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  /* Tiêu đề một dòng để dành chỗ cho nội dung */
+  body.board-mode .panel .card-head h2 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.board-mode .panel .card-head .pill { font-size: 12px; padding: 3px 8px; white-space: nowrap; }
+  body.board-mode #trMeta, body.board-mode #pzMeta { font-size: 13px; margin: 0 0 4px; }
+}
+@media (max-width: 899px) {
+  body.board-mode.scr-train, body.board-mode.scr-pos, body.board-mode.scr-thinkpos { padding-bottom: 0; }
+}
