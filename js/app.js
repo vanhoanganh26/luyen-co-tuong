@@ -20,7 +20,7 @@ import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 import { renderAfterOpening } from './modes/after-opening.js';
 
-export const APP_VERSION = '0.11.5';
+export const APP_VERSION = '0.11.6';
 
 const $ = (id) => document.getElementById(id);
 
@@ -406,7 +406,7 @@ function showScreen(name) {
   document.body.classList.add('scr-' + name);
   // Màn có bàn cờ: "khung cố định" — trang không cuộn, bàn cờ đứng yên, chỉ bảng bên cuộn bên trong
   document.body.classList.toggle('board-mode', !$('screenBoard').hidden);
-  document.querySelectorAll('#screenBoard > .panel').forEach((p) => { p.scrollTop = 0; });
+  document.querySelectorAll('#screenBoard > .panel, #screenBoard > .panel > .card').forEach((p) => { p.scrollTop = 0; });
   setChrome();
   window.scrollTo({ top: 0 });
 }

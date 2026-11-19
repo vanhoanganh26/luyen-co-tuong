@@ -903,18 +903,22 @@ body.board-mode #screenBoard > .panel::after { content: ""; display: block; flex
   .brand-by { font-family: system-ui, "Segoe UI", sans-serif; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
 }
 
-/* ---- 0.11.5: hàng nút luyện CỐ ĐỊNH ở đáy bảng bên ----
-   Trước: thẻ cao theo nội dung ("Vì sao đi…?" dài/ngắn) nên hàng nút Luyện lại / Xem nước đúng trôi lên xuống theo từng nước.
-   Nay: thẻ chính luôn cao đầy bảng bên (flex), hàng nút đẩy xuống đáy bằng margin-top:auto; nội dung dài thì cuộn,
-   hàng nút vẫn dính đáy (sticky). Thẻ "Hết biến" hiện thì bỏ kéo dãn để thẻ đó lên ngay dưới. */
+/* ---- 0.11.5 (sửa lại ở 0.11.6): hàng nút luyện CỐ ĐỊNH ở đáy bảng bên ----
+   Thẻ luyện được kéo cao đầy bảng bên và TỰ CUỘN bên trong (bảng bên không cuộn nữa); hàng nút nằm cuối thẻ,
+   margin-top:auto + sticky bottom:0 trong chính thẻ (thẻ không đệm đáy) => nút luôn ở đáy, dù nội dung "Vì sao…" ngắn hay dài,
+   ở mọi cỡ màn hình. Khi thẻ "Hết biến" hiện thì trở lại kiểu cũ (bảng bên cuộn) để thấy cả hai thẻ. */
+body.board-mode #panelTrain:has(#trEnd[hidden]),
+body.board-mode #panelPos,
+body.board-mode #panelThink { overflow: hidden; }
 body.board-mode #panelTrain:has(#trEnd[hidden]) > .card:first-child,
 body.board-mode #panelPos > .card:first-child,
 body.board-mode #panelThink > .card:first-child {
-  flex: 1 0 auto; display: flex; flex-direction: column;
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; overflow-anchor: none;
+  display: flex; flex-direction: column; padding-bottom: 0;
 }
-body.board-mode #panelTrain > .card:first-child > .actbar,
+body.board-mode #panelTrain:has(#trEnd[hidden]) > .card:first-child > *,
+body.board-mode #panelPos > .card:first-child > *,
+body.board-mode #panelThink > .card:first-child > * { flex-shrink: 0; }
+body.board-mode #panelTrain:has(#trEnd[hidden]) > .card:first-child > .actbar,
 body.board-mode #panelPos > .card:first-child > .actbar,
-body.board-mode #panelThink > .card:first-child > .actbar { margin-top: auto; }
-/* khoảng cách tối thiểu giữa nội dung và hàng nút khi thẻ đã kéo dãn */
-body.board-mode #panelTrain > .card:first-child > .actbar::before,
-body.board-mode #panelPos > .card:first-child > .actbar::before { content: none; }
+body.board-mode #panelThink > .card:first-child > .actbar { margin-top: auto; margin-bottom: 0; position: sticky; bottom: 0; }

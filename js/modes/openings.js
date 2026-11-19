@@ -938,6 +938,7 @@ export function initOpenings(ctx) {
     if (t.isUserTurn()) {
       // Mỗi lượt mới: đưa bảng chú thích về đầu để thấy ngay nhận xét / nước cần đi (bàn cờ không đổi chỗ)
       $('panelTrain').scrollTop = 0;
+      $('panelTrain').querySelector('.card').scrollTop = 0; // thẻ luyện tự cuộn (0.11.6)
       if (purpose) { askPurpose(); return; }
       // "Chỉ hỏi nước then chốt": nước thường app tự đi (chỉ ở chế độ Kiểm tra)
       if (t.mode === 'test' && t.keyOnly && !t.isKey()) {
