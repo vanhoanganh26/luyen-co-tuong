@@ -20,7 +20,7 @@ import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 import { renderAfterOpening } from './modes/after-opening.js';
 
-export const APP_VERSION = '0.11.4';
+export const APP_VERSION = '0.11.5';
 
 const $ = (id) => document.getElementById(id);
 
