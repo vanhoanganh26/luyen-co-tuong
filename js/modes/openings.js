@@ -980,6 +980,12 @@ export function initOpenings(ctx) {
     }, t.path.length === 0 ? 350 : 650);
   }
 
+  /** Lưới nút "Hết biến": số nút lẻ thì nút cuối trải hết hàng cho cân */
+  function balanceEndActions() {
+    const vis = [...document.querySelectorAll('#trEnd .end-actions .btn')].filter((b) => !b.hidden);
+    vis.forEach((b, i) => b.classList.toggle('span2', vis.length % 2 === 1 && i === vis.length - 1));
+  }
+
   function finish() {
     const t = trainer;
     view.setHint(null);
@@ -987,6 +993,7 @@ export function initOpenings(ctx) {
     const line = t.currentLine();
     const total = t.score.correct + t.score.retry + t.score.wrong;
     $('trEnd').hidden = false;
+    setTimeout(balanceEndActions, 0); // sau khi các nút được ẩn/hiện xong
     $('trReveal').hidden = true;
     $('trQuiz').hidden = true;
     showAnalysis(t);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Luyện Cờ Tướng</title>
+  <title>Luyện Cờ Tướng - Cao Nguyễn Thắng</title>
   <meta name="description" content="App luyện cờ tướng: khai cuộc, trung cuộc, tàn cuộc — chạy offline">
   <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#12100e" media="(prefers-color-scheme: dark)">
@@ -16,7 +16,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"><span>Luyện Cờ Tướng</span></div>
+    <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"><span class="brand-t">Luyện Cờ Tướng<span class="brand-sep"> - </span><span class="brand-by">Cao Nguyễn Thắng</span></span></div>
     <div class="top-actions">
       <button class="icon-btn free-only" id="btnNew" title="Ván mới" aria-label="Ván mới">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">Ván mới</span>
@@ -315,9 +315,8 @@
       <div class="card" id="trEnd" hidden>
         <h2>Hết biến</h2>
         <p id="trSummary"></p>
-        <p class="comment" id="trPlan"></p>
-        <div class="ao" id="trAnalysis"></div>
-        <div class="row wrap actbar">
+        <!-- Nút "làm gì tiếp" đặt ngay dưới kết quả (không dính đáy) để không đè lên phần phân tích dài bên dưới -->
+        <div class="end-actions">
           <button class="btn primary" id="trNextLine" hidden>Biến tiếp theo ▸</button>
           <button class="btn primary" id="trAgain">Luyện tiếp</button>
           <button class="btn" id="trRelearn" hidden>Học lại (có gợi ý)</button>
@@ -325,6 +324,8 @@
           <button class="btn" id="trToPlay">Đánh tiếp với máy</button>
           <button class="btn" id="trToFree">Đi tiếp tự do</button>
         </div>
+        <p class="comment" id="trPlan"></p>
+        <div class="ao" id="trAnalysis"></div>
       </div>
     </aside>
 
