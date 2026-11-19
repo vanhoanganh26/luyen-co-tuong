@@ -97,6 +97,18 @@ export function reachOf(op, side, line, memo = new Map()) {
  * Lập kế hoạch học cho khai cuộc `op` khi anh cầm `side`.
  * Trả về { branch (nút rẽ nhánh), groups: [{ key, vn, mover, info, label, lines: [{ line, rank, link }] }], order: [lineId] }
  */
+/** Nút rẽ khỏi chính biến của một nhánh phụ (nút đầu tiên trên đường đi có xếp hạng không phải chính biến) */
+function deviationOf(op, line) {
+  if (!op.info || !line.lastKey) return null;
+  const parts = line.lastKey.split(' ');
+  for (let i = 1; i <= parts.length; i++) {
+    const k = parts.slice(0, i).join(' ');
+    const inf = op.info[k];
+    if (inf && inf.kind !== 'spine') return op.nodes.get(k) || null;
+  }
+  return null;
+}
+
 export function linePlan(op, side) {
   // Tìm chỗ rẽ nhánh đầu tiên (đi theo đường duy nhất từ gốc)
   let node = op.root;
@@ -114,9 +126,12 @@ export function linePlan(op, side) {
       const c = op.nodes.get(ck);
       const ls = lines.filter((l) => c.lineIds.includes(l.id)).map((line) => {
         const last = op.nodes.get(line.lastKey);
-        const inf = op.info?.[line.lastKey];
-        // Biến chỉ để "chuyển sang chương khác" (kết thúc ngay tại nước rẽ)
-        const link = inf?.link && !inf.link.same && inf.kind !== 'spine' ? inf.link : null;
+        // Biến chỉ để "chuyển sang chương khác" (nước rẽ đưa ngay sang thế của chương khác).
+        // Từ 0.11.3 nhánh này được nối tiếp theo chính biến chương đích => nhận ra qua nút rẽ nhánh
+        const dev = deviationOf(op, line);
+        const inf = dev ? op.info?.[dev.key] : op.info?.[line.lastKey];
+        const linkedHere = dev ? (dev.key === line.lastKey || dev.comments.some((t) => t.includes('→ Chuyển sang chương'))) : true;
+        const link = inf?.link && !inf.link.same && inf.kind !== 'spine' && linkedHere ? inf.link : null;
         const reach = reachOf(op, side, line, memo);
         return { line, rank: lineRank(op, line), link, lastPly: last?.ply, reach, optional: !link && lineRank(op, line)[0] > 0 && reach < OPTIONAL_REACH };
       }).sort((a, b) => (a.optional - b.optional) || ((a.rank[0] > 0) - (b.rank[0] > 0)) || (b.reach - a.reach) || cmpRank(a.rank, b.rank));
