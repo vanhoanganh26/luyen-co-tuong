@@ -31,6 +31,7 @@ export function initOpenings(ctx) {
   let openings = [];
   let cards = store.getJSON('srs', {}) || {};
   let filter = 'book';
+  let sideFilter = store.getJSON('opSideFilter', 'all'); // lọc theo bên cầm: 'all' | 'r' | 'b'
   let bookChapters = [];         // các chương book (data/book.built.json)
   let bookMeta = null;
   let lineProg = store.getJSON('lineProgress', {}) || {};   // tiến độ "Học theo biến"
@@ -135,6 +136,7 @@ export function initOpenings(ctx) {
     list.innerHTML = '';
     const groups = new Map();
     for (const op of openings) {
+      if (sideFilter !== 'all' && !op.sides.includes(sideFilter)) continue;
       if (filter === 'rep') { if (!inRep(op)) continue; }
       else if (filter !== 'all' && op.kind !== filter) continue;
       if (!groups.has(op.group)) groups.set(op.group, []);
@@ -147,7 +149,9 @@ export function initOpenings(ctx) {
       const sec = document.createElement('section');
       sec.className = 'op-group';
       const h = document.createElement('h3');
-      h.textContent = g;
+      // "Book cầm Đỏ · Pháo đầu – Bình phong mã" => nhãn nhỏ "Cầm Đỏ" + tên nhóm
+      const mm = /^Book cầm (Đỏ|Đen) · (.+)$/.exec(g);
+      if (mm) { const sm = document.createElement('small'); sm.textContent = 'Cầm ' + mm[1]; h.append(sm, mm[2]); } else h.textContent = g;
       sec.appendChild(h);
       const grid = document.createElement('div');
       grid.className = 'op-grid';
@@ -156,8 +160,19 @@ export function initOpenings(ctx) {
         const b = document.createElement('button');
         b.className = 'op-card' + (op.kind === 'trap' ? ' trap' : op.kind === 'book' ? ' book' : '');
         const sides = op.sides.map((s) => (s === 'r' ? 'Đỏ' : 'Đen')).join(' / ');
+        // Book: số biến chính cần thuộc + thanh "đã thuộc" (cùng cách đếm với hộp "Học theo biến")
+        let prog = '';
+        let meta = `${op.lines.length} biến · cầm ${sides}`;
+        if (op.kind === 'book') {
+          const pl = linePlan(op, op.bookSide);
+          const total = pl.order.length;
+          const done = pl.order.filter((id) => lineProg[lineKey(op.id, op.bookSide, id)]?.mastered).length;
+          meta = `${total} biến chính${pl.optional.length ? ` · ${pl.optional.length} biến ít gặp` : ''}`;
+          prog = total ? `<span class="op-prog" title="Đã thuộc ${done}/${total} biến chính"><i style="width:${Math.round((100 * done) / total)}%"></i></span>` : '';
+          if (done) meta += ` · thuộc ${done}/${total}`;
+        }
         b.innerHTML = `<span class="op-name"></span>
-          <span class="op-meta">${op.kind === 'book' ? `${op.lines.length} nhánh (${op.lines.filter((l) => l.alt).length} nhánh đối phương đi khác) · cầm ${sides}` : `${op.lines.length} biến · cầm ${sides}${engStat(op)}`}</span>
+          <span class="op-meta">${meta}</span>${prog}
           <span class="op-stat">${st.started ? `Đúng ${Math.round((st.acc || 0) * 100)}%` : 'Chưa luyện'}${st.due ? ` · <b>${st.due} cần ôn</b>` : ''}</span>`;
         b.querySelector('.op-name').textContent = (inRep(op) ? '★ ' : '') + op.name;
         b.onclick = () => openDialog(op);
@@ -167,6 +182,16 @@ export function initOpenings(ctx) {
       list.appendChild(sec);
     }
   }
+
+  // Lọc theo bên cầm (Cả hai / Đỏ / Đen) — nhớ lựa chọn lần trước
+  document.querySelectorAll('#opSideFilter .sf').forEach((b) => {
+    b.classList.toggle('on', b.dataset.side === sideFilter);
+    b.onclick = () => {
+      sideFilter = b.dataset.side; store.setJSON('opSideFilter', sideFilter);
+      document.querySelectorAll('#opSideFilter .sf').forEach((x) => x.classList.toggle('on', x === b));
+      renderList();
+    };
+  });
 
   document.querySelectorAll('#screenOpenings .chip').forEach((c) => {
     c.onclick = () => {
@@ -195,6 +220,10 @@ export function initOpenings(ctx) {
     const r = $('opSideR'), b = $('opSideB');
     r.disabled = !op.sides.includes('r');
     b.disabled = !op.sides.includes('b');
+    // Chương chỉ có một bên: ẩn nút bị khóa, ghi rõ bên cầm
+    r.closest('label').hidden = r.disabled; b.closest('label').hidden = b.disabled;
+    $('opSideOnly').textContent = op.sides.length === 1 ? `— chương này chỉ cầm ${op.sides[0] === 'r' ? 'Đỏ (đi trước)' : 'Đen (đi sau)'}` : '';
+    r.closest('.seg').hidden = op.sides.length === 1;
     const lastSide = store.getJSON('lastSide', 'r');
     (op.sides.includes(lastSide) ? (lastSide === 'r' ? r : b) : (op.sides[0] === 'r' ? r : b)).checked = true;
     const lastMode = store.getJSON('lastMode', 'auto');
@@ -737,6 +766,7 @@ export function initOpenings(ctx) {
     $('trGoal').hidden = true;
     goalPending = false;
     setFeedback('', '');
+    setVerdict(null);
     $('trComment').textContent = '';
     update();
     if (scope?.goal) return showGoal(op, side, scope.lines[0]);
@@ -774,6 +804,13 @@ export function initOpenings(ctx) {
       update();
       step();
     };
+  }
+
+  // Kết quả nước vừa đi, hiện ngay trên thanh trạng thái phía trên bàn cờ (không phải cuộn bảng bên)
+  let verdict = null;
+  function setVerdict(kind, text) {
+    verdict = kind ? { kind, text } : null;
+    $('trReveal').classList.toggle('primary', kind === 'warn'); // sai lần 1: nút chính là "Xem nước đúng"
   }
 
   function setFeedback(kind, html) {
@@ -878,8 +915,10 @@ export function initOpenings(ctx) {
       view.setHint(parseCoordMove(ex.iccs));
     } else view.setHint(null);
     const st = $('status');
-    st.className = 'status' + (checkSq >= 0 ? ' check' : '');
-    st.textContent = t.isEnd() ? 'Hết biến' : t.isUserTurn() ? `Lượt anh (${t.side === 'r' ? 'Đỏ' : 'Đen'})${checkSq >= 0 ? ' — đang bị chiếu!' : ''}` : 'Máy đang đi…';
+    st.className = 'status' + (verdict ? ' v-' + verdict.kind : '') + (checkSq >= 0 ? ' check' : '');
+    let base = t.isEnd() ? 'Hết biến' : t.isUserTurn() ? `Lượt anh (${t.side === 'r' ? 'Đỏ' : 'Đen'})${checkSq >= 0 ? ' — đang bị chiếu!' : ''}` : 'Máy đang đi…';
+    if (!t.isEnd() && t.isUserTurn() && t.mode === 'learn' && !purpose && checkSq < 0) base = `Lượt anh: nên đi ${ctx.moveLabelVN(t.mainExpected().vn)}`;
+    st.textContent = verdict ? `${verdict.text} · ${base}` : base;
     const line = t.currentLine();
     const done = t.path.filter((p) => p.by === 'user' && p.result !== 'auto').length;
     // Cảnh báo nếu nước vừa đi bị engine gắn cờ trong biến này
@@ -1027,6 +1066,7 @@ export function initOpenings(ctx) {
         Sound.move();
         const note = nodeNote(res.node);
         setFeedback('ok', res.quality === 5 ? `Đúng: <b>${ctx.moveLabelVN(res.node.vn)}</b>` : `Đúng ở lần thử thứ hai: <b>${ctx.moveLabelVN(res.node.vn)}</b>`);
+        setVerdict('ok', res.quality === 5 ? `✓ Đúng: ${ctx.moveLabelVN(res.node.vn)}` : `✓ Đúng (lần 2): ${ctx.moveLabelVN(res.node.vn)}`);
         $('trComment').textContent = note;
         update(m.dragged ? null : m);
         showWhy(res.node);
@@ -1039,6 +1079,7 @@ export function initOpenings(ctx) {
         const prevPos = new Position(t.op.startFen);
         for (const iccs of before) prevPos.makeMove(parseCoordMove(iccs));
         const mine = ctx.moveLabelVN(moveToNotation(prevPos, res.played));
+        setVerdict('ok', `✓ ${mine} cũng tốt`);
         setFeedback('ok', `<b>${mine}</b> cũng tốt — kém nước tốt nhất không đáng kể (Pikafish). Book đi <b>${ctx.moveLabelVN(res.node.vn)}</b>; app đi nước book để tiếp tục biến.`);
         $('trComment').textContent = nodeNote(res.node);
         update(parseCoordMove(res.node.iccs));
@@ -1048,6 +1089,7 @@ export function initOpenings(ctx) {
       } else if (res.result === 'retry') {
         Sound.error();
         setFeedback('warn', 'Chưa đúng nước lý thuyết. Anh thử lại một lần nữa.');
+        setVerdict('warn', '✗ Chưa đúng — thử lại');
         update();
       } else if (res.result === 'wrong') {
         Sound.error();
@@ -1056,6 +1098,7 @@ export function initOpenings(ctx) {
         const prevPos = new Position(t.op.startFen);
         for (const iccs of before) prevPos.makeMove(parseCoordMove(iccs));
         const mine = ctx.moveLabelVN(moveToNotation(prevPos, res.played));
+        setVerdict('bad', `✗ Sai — đúng là ${ctx.moveLabelVN(res.node.vn)}`);
         setFeedback('bad', `Anh đi <b>${mine}</b>. Nước đúng là <b>${ctx.moveLabelVN(res.node.vn)}</b>. ${note ? 'Lý do: ' + note : 'Đây là nước theo biến lý thuyết.'}<br><span class="muted small" id="trEngineCmp">Đang nhờ engine so sánh hai nước…</span>`);
         update(parseCoordMove(res.node.iccs));
         showWhy(res.node, 'phải đi');
@@ -1148,7 +1191,8 @@ export function initOpenings(ctx) {
     if (op) start(op, side || op.sides[0], mode);
   }
   return { load, renderList, isTraining: () => !!trainer, exit, getOpenings: () => openings, getEdits: () => edits,
-    getCards: () => cards, startReview, trainById, startDaily, dailyLabel, ready: () => openings.length > 0 };
+    getCards: () => cards, startReview, trainById, startDaily, dailyLabel, ready: () => openings.length > 0,
+    hasRep: () => !!(repertoire.r.length || repertoire.b.length) };
 }
 
 /**

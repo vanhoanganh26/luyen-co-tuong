@@ -19,6 +19,10 @@ export function initOverview(ctx) {
 
     // ---- Bài luyện hôm nay (theo bộ khai cuộc của anh) ----
     if (oUI.ready() && oUI.dailyLabel) $('hmDaily').textContent = oUI.dailyLabel();
+    // Người dùng mới (chưa chọn bộ khai cuộc): hiện màn chào 3 bước thay cho nút bài luyện
+    const noRep = oUI.ready() && oUI.hasRep && !oUI.hasRep();
+    $('hmStart').hidden = !noRep;
+    $('hmDaily').hidden = !!noRep;
 
     // ---- Khai cuộc ----
     const openings = oUI.ready() ? oUI.getOpenings() : [];

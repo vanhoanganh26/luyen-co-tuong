@@ -44,10 +44,20 @@ export function initThink(ctx) {
     $('thReadNote').textContent = items.length
       ? `${items.length} thế cờ lấy từ các biến lý thuyết (giữa biến và hết biến). Đã làm ${done}/${items.length}.`
       : 'Chưa có dữ liệu thế cờ (cần chạy tools/build-insights.mjs).';
-    $('thReads').innerHTML = items.map((x, i) => {
-      const s = st[x.id];
-      const mark = s ? `<span class="pill ${s.score >= 6 ? 'learn' : 'test'}">${s.score}/7</span>` : '';
-      return `<button class="th-card" data-r="${i}"><b>${esc(x.opening)}</b><span class="muted small">${esc(x.line)} · ${x.where} · ${x.turn === 'r' ? 'Đỏ' : 'Đen'} đi</span>${mark}</button>`;
+    // Nhóm theo khai cuộc (mỗi nhóm thu gọn được) thay cho lưới phẳng nhiều thẻ trùng tên
+    const groups = new Map();
+    items.forEach((x, i) => { if (!groups.has(x.opening)) groups.set(x.opening, []); groups.get(x.opening).push(i); });
+    let first = true;
+    $('thReads').innerHTML = [...groups].map(([name, idx]) => {
+      const nDone = idx.filter((i) => st[items[i].id]).length;
+      const cards = idx.map((i) => {
+        const x = items[i], s = st[x.id];
+        const mark = s ? `<span class="pill ${s.score >= 6 ? 'learn' : 'test'}">${s.score}/7</span>` : '';
+        return `<button class="th-card" data-r="${i}"><b>${esc(ctx.moveLabelVN ? x.line.replace(/\b([A-Z][a-z]?\d[.+-]\d)\b/g, (m) => ctx.moveLabelVN(m)) : x.line)}</b><span class="muted small">${x.where} · ${x.turn === 'r' ? 'Đỏ' : 'Đen'} đi</span>${mark}</button>`;
+      }).join('');
+      const html = `<details class="plan-group th-group"${first ? ' open' : ''}><summary><b>${esc(name)}</b><span class="grow"></span><span class="small muted">${nDone}/${idx.length} thế</span></summary><div class="op-grid th-grid">${cards}</div></details>`;
+      first = false;
+      return html;
     }).join('');
     $('thReads').querySelectorAll('[data-r]').forEach((b) => { b.onclick = () => openRead(items[+b.dataset.r]); });
     $('thRandom').onclick = () => {

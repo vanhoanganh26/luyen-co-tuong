@@ -41,6 +41,14 @@ export function initPlay(ctx) {
     sel.appendChild(o);
   }
   sel.value = String(store.getJSON('playLevel', 4));
+  // Mô tả ngắn từng cấp độ để anh chọn cho đúng sức
+  const LEVEL_HINT = (i) => (i <= 2 ? 'Máy còn hay đi sai — hợp để tập triển khai khai cuộc.'
+    : i <= 4 ? 'Sức người chơi phong trào — đối thủ luyện tập hằng ngày.'
+      : i <= 6 ? 'Khá mạnh — phải tính kỹ đòn chiến thuật mới giữ được thế.'
+        : 'Rất mạnh — để thử sức; máy nghĩ lâu hơn (điện thoại yếu có thể chậm).');
+  const showLevelHint = () => { $('plLevelHint').textContent = LEVEL_HINT(Number(sel.value)); };
+  sel.addEventListener('change', showLevelHint);
+  showLevelHint();
   if (store.getJSON('playSide', 'r') === 'b') $('plSideB').checked = true;
 
   async function showEngineName() {
@@ -203,24 +211,42 @@ export function initPlay(ctx) {
     const pos = game.pos;
     const checkSq = pos.inCheck() ? pos.kingSq(pos.turn) : -1;
     view.render({ board: pos.board, last: game.lastMove(), checkSq, animate });
-    // Dòng trạng thái
+    // Dòng trạng thái ngay trên bàn cờ: lượt đi, kết quả ván, nhận xét nước đang xem (sau phân tích)
     const st = $('status');
-    st.className = 'status' + (checkSq >= 0 ? ' check' : '') + (state === 'over' ? ' over' : '');
-    let msg;
+    const overKind = result?.winner === cfg.side ? 'ok' : result?.winner ? 'bad' : 'warn';
+    let msg, kind = null;
+    const a = analysis && game.ply > 0 ? analysis.moves[game.ply - 1] : null;
     if (state === 'analyzing') msg = 'Đang phân tích ván…';
-    else if (state === 'over') msg = resultText();
-    else if (!atEnd()) msg = 'Đang xem lại — bấm ⏭ để về nước cuối và đi tiếp';
+    else if (a?.cls) { msg = `Nước ${a.ply} ${a.cls.sym} ${a.cls.name} — mất ~${(a.loss / 100).toFixed(1)} điểm`; kind = a.cls.key === 'inaccuracy' ? 'warn' : 'bad'; }
+    else if (state === 'over' && atEnd()) { msg = resultText(); kind = overKind; }
+    else if (!atEnd()) msg = 'Đang xem lại — bấm ⏭ để về nước cuối';
     else if (thinking) msg = 'Máy đang suy nghĩ…';
     else msg = userTurn() ? `Lượt anh (${SIDE[cfg.side]})${checkSq >= 0 ? ' — đang bị chiếu!' : ''}` : 'Lượt máy';
+    st.className = 'status' + (kind ? ' v-' + kind : '') + (checkSq >= 0 && !kind ? ' check' : '');
     st.textContent = msg;
-    $('plStatus').textContent = msg;
-    $('plStatus').className = 'feedback ' + (state === 'over' ? (result?.winner === cfg.side ? 'ok' : result?.winner ? 'bad' : 'warn') : 'info');
-    $('plEval').textContent = lastEval === null ? 'Điểm: —' : 'Điểm (Đỏ): ' + fmtScore(lastEval);
-    $('plHint').disabled = !(state === 'play' && userTurn() && !thinking && atEnd());
-    $('plUndo').disabled = !(state === 'play' && game.moves.length && !thinking);
-    $('plResign').disabled = state !== 'play';
+    // Ô kết quả trong bảng: chỉ hiện khi hết ván / đang phân tích (lúc đang đánh thì thanh trên bàn cờ đã đủ)
+    $('plStatus').hidden = state === 'play';
+    $('plStatus').textContent = state === 'over' ? resultText() + (analysis ? '' : ' Bấm "Phân tích ván" để engine chấm từng nước.') : msg;
+    $('plStatus').className = 'feedback ' + (state === 'over' ? overKind : 'info');
+    // Điểm thế cờ theo phía anh + thanh ưu thế
+    const ue = lastEval === null ? null : (cfg.side === 'r' ? lastEval : -lastEval);
+    $('plEval').textContent = ue === null ? 'Điểm: —' : fmtScore(ue);
+    $('plEval').className = 'pill' + (ue === null ? '' : ue > 50 ? ' learn' : ue < -50 ? ' bad' : '');
+    $('plEvalFill').style.width = (ue === null ? 50 : Math.round(50 + 50 * Math.tanh(ue / 600))) + '%';
+    $('plEvalCap').textContent = ue === null ? 'Thanh ưu thế cập nhật khi máy tính nước.' : Math.abs(ue) > 20000 ? (ue > 0 ? 'Anh đang có đòn thắng.' : 'Máy đang có đòn thắng.') : ue > 50 ? `Anh đang hơn khoảng ${(ue / 100).toFixed(1)} điểm.` : ue < -50 ? `Máy đang hơn khoảng ${(-ue / 100).toFixed(1)} điểm.` : 'Thế cờ cân bằng.';
+    // Nút theo ngữ cảnh: đang đánh => Gợi ý / Đi lại; hết ván => Phân tích ván là nút chính
+    const playing = state === 'play';
+    $('plHint').hidden = !playing; $('plUndo').hidden = !playing;
+    $('plAnalyze').hidden = playing;
+    $('plResign').hidden = !playing;
+    $('plHint').disabled = !(playing && userTurn() && !thinking && atEnd());
+    $('plUndo').disabled = !(playing && game.moves.length && !thinking);
+    $('plResign').disabled = !playing;
     $('plAnalyze').disabled = state === 'analyzing' || game.moves.length < 2;
     $('plAnalyze').textContent = analysis ? 'Phân tích lại' : 'Phân tích ván';
+    $('plAnalyze').classList.toggle('primary', !analysis);
+    $('plNew').classList.toggle('primary', state === 'over' && !!analysis);
+    $('plNew').classList.toggle('ghost', !(state === 'over' && !!analysis));
     $('plPlanBtn').disabled = state === 'analyzing' || thinking || game.pos.status().over;
     renderMoves();
     renderDetail();
@@ -332,6 +358,7 @@ export function initPlay(ctx) {
     view.setHint(null);
     $('playSetup').hidden = false;
     $('playGame').hidden = true;
+    $('status').className = 'status'; $('status').textContent = 'Chọn bên, độ mạnh rồi bấm "Bắt đầu"';
     renderSaved();
   };
 
@@ -412,7 +439,8 @@ export function initPlay(ctx) {
       b.className = 'saved-item';
       const d = new Date(g.date);
       const res = g.result ? (g.result.winner ? (g.result.winner === g.side ? 'Thắng' : 'Thua') : 'Hòa') : 'Chưa xong';
-      b.textContent = `${d.toLocaleDateString('vi-VN')} ${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} · cầm ${SIDE[g.side]} · cấp ${g.level} · ${res} · ${g.moves.length} nước${g.analysis ? ' · đã phân tích' : ''}`;
+      const cls = res === 'Thắng' ? 'learn' : res === 'Thua' ? 'bad' : '';
+      b.innerHTML = `<span class="pill ${cls}">${res}</span><span class="si-main">Cầm ${SIDE[g.side]} · cấp ${g.level} · ${g.moves.length} nước${g.analysis ? ' · đã phân tích' : ''}</span><span class="si-date">${d.toLocaleDateString('vi-VN')} ${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>`;
       b.onclick = () => openSaved(g);
       li.appendChild(b);
       ol.appendChild(li);
@@ -445,7 +473,7 @@ export function initPlay(ctx) {
     showEngineName();
     renderSaved();
     if (game && state !== 'idle') { ctx.setController(controller); if (view.flipped !== (cfg.side === 'b')) view.setFlipped(cfg.side === 'b'); render(); maybeEngineMove(); }
-    else { $('playSetup').hidden = false; $('playGame').hidden = true; ctx.setController(controller); view.render({ board: new Position().board, last: null, checkSq: -1 }); }
+    else { $('playSetup').hidden = false; $('playGame').hidden = true; ctx.setController(controller); view.render({ board: new Position().board, last: null, checkSq: -1 }); $('status').className = 'status'; $('status').textContent = 'Chọn bên, độ mạnh rồi bấm "Bắt đầu"'; }
   }
   function leave() { if (!active) return; closePlan(); active = false; engine.stop(); thinking = false; view.setHint(null); ctx.setController(null); }
 

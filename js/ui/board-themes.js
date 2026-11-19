@@ -7,6 +7,9 @@
 // =====================================================================
 
 export const BOARD_THEMES = [
+  { id: 'theo', name: 'Theo giao diện (Ngọc ngà / Sơn mài)' },
+  { id: 'ngocnga', name: 'Gỗ phong — Ngọc ngà' },
+  { id: 'sonmai', name: 'Sơn mài chỉ vàng' },
   { id: 'go', name: 'Gỗ sáng' },
   { id: 'trac', name: 'Gỗ trắc sẫm' },
   { id: 'giay', name: 'Giấy dó cổ thư' },
@@ -18,6 +21,9 @@ export const BOARD_THEMES = [
 ];
 
 export const PIECE_SETS = [
+  { id: 'theo', name: 'Theo giao diện' },
+  { id: 'ngocnga', name: 'Ngà viền gỗ' },
+  { id: 'sonmai', name: 'Ngà viền vàng' },
   { id: 'go', name: 'Gỗ' },
   { id: 'nga', name: 'Ngà trắng' },
   { id: 'ngoc', name: 'Đá ngọc' },
@@ -67,6 +73,11 @@ function noiseLayer(id, { type = 'fractalNoise', fx, fy = fx, oct = 3, seed = 2,
 }
 
 const TEXTURES = {
+  ngocnga: [{ fx: 0.003, fy: 0.07, oct: 4, seed: 7, color: '8a5a2a', a: 0.55, b: -0.3 }],
+  sonmai: [
+    { fx: 0.0025, fy: 0.08, oct: 4, seed: 11, color: '0e0603', a: 0.85, b: -0.38 },
+    { fx: 0.004, fy: 0.05, oct: 3, seed: 5, color: 'd4af6a', a: 0.32, b: -0.2 },
+  ],
   go: [{ fx: 0.003, fy: 0.07, oct: 4, seed: 7, color: '7a4a1c', a: 0.9, b: -0.36 }],
   trac: [
     { fx: 0.0025, fy: 0.09, oct: 4, seed: 11, color: '1a0904', a: 1.5, b: -0.55 },

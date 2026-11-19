@@ -20,15 +20,15 @@ import { moveToNotation } from './core/notation.js';
 import { engine, EngineClient } from './engine/client.js';
 import { renderAfterOpening } from './modes/after-opening.js';
 
-export const APP_VERSION = '0.10.3';
+export const APP_VERSION = '0.11.1';
 
 const $ = (id) => document.getElementById(id);
 
 // ---------- Cài đặt ----------
 const DEFAULTS = {
   pieceStyle: 'han',     // 'han' | 'thuphap' | 'viet' | 'icon'
-  boardTheme: 'go',      // xem BOARD_THEMES trong js/ui/board-themes.js
-  pieceSet: 'go',        // xem PIECE_SETS
+  boardTheme: 'theo',    // xem BOARD_THEMES trong js/ui/board-themes.js ('theo' = theo giao diện sáng/tối)
+  pieceSet: 'theo',      // xem PIECE_SETS
   notation: 'vn',        // 'vn' | 'wxf'
   vnAdvance: '.',        // '.' | '+'
   repetitionRule: 'warn',// 'warn' | 'draw'
@@ -39,6 +39,8 @@ const DEFAULTS = {
 };
 const settings = { ...DEFAULTS, ...(store.getJSON('settings') || {}) };
 const saveSettings = () => store.setJSON('settings', settings);
+// 0.11: bộ màu mới Ngọc ngà / Sơn mài — chuyển bàn & quân về "Theo giao diện" một lần (anh vẫn đổi lại được trong Cài đặt)
+if (settings.lookVer !== 2) { settings.boardTheme = 'theo'; settings.pieceSet = 'theo'; settings.lookVer = 2; saveSettings(); }
 
 // ---------- Ván cờ ----------
 let game;
@@ -217,6 +219,10 @@ function applyTheme() {
   const root = document.documentElement;
   if (settings.theme === 'auto') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', settings.theme);
+  // Màu thanh trạng thái hệ điều hành (điện thoại) theo nền app
+  const dark = isDarkNow();
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.setAttribute('content', dark ? '#12100e' : '#f6f4ef'); m.removeAttribute('media'); });
+  if (typeof applyLook === 'function' && view) applyLook(); // bàn & quân "theo giao diện"
 }
 function applySound() {
   Sound.setEnabled(settings.sound);
@@ -332,14 +338,18 @@ function fillLook() {
   $('setPieceSet').innerHTML = opts(PIECE_SETS);
   $('setPieces').innerHTML = opts(PIECE_STYLES);
 }
+/** Kiểu bàn / quân thực dùng: "theo" => Ngọc ngà (sáng) hoặc Sơn mài (tối) */
+const resolveLook = (id) => (id === 'theo' ? (isDarkNow() ? 'sonmai' : 'ngocnga') : id);
 function lookOf(v) {
-  v.boardTheme = settings.boardTheme; v.pieceSet = settings.pieceSet; v.pieceStyle = settings.pieceStyle;
-  if (v.svg) { v.setBoardTheme(settings.boardTheme); v.setPieceSet(settings.pieceSet); v.setPieceStyle(settings.pieceStyle); }
+  const bt = resolveLook(settings.boardTheme), ps = resolveLook(settings.pieceSet);
+  v.boardTheme = bt; v.pieceSet = ps; v.pieceStyle = settings.pieceStyle;
+  if (v.svg) { v.setBoardTheme(bt); v.setPieceSet(ps); v.setPieceStyle(settings.pieceStyle); }
 }
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (settings.theme === 'auto') applyTheme(); });
 function applyLook() {
   // Giá trị cũ không còn trong danh sách => về mặc định
-  if (!BOARD_THEMES.some((x) => x.id === settings.boardTheme)) settings.boardTheme = 'go';
-  if (!PIECE_SETS.some((x) => x.id === settings.pieceSet)) settings.pieceSet = 'go';
+  if (!BOARD_THEMES.some((x) => x.id === settings.boardTheme)) settings.boardTheme = 'theo';
+  if (!PIECE_SETS.some((x) => x.id === settings.pieceSet)) settings.pieceSet = 'theo';
   if (!PIECE_STYLES.some((x) => x.id === settings.pieceStyle)) settings.pieceStyle = 'han';
   lookOf(view);
   if (dlgSet.open) {
@@ -387,6 +397,13 @@ function showScreen(name) {
   $('tabOpen').setAttribute('aria-selected', String(name === 'openings' || name === 'train' || name === 'edit'));
   $('tabPlay').setAttribute('aria-selected', String(name === 'play'));
   if (name === 'free') { view.clearSelection(); if (view.flipped !== flipped) view.setFlipped(flipped); refresh(); }
+  // Nhóm "Luyện thế" (Trung cuộc / Tàn cuộc / Tư duy) và lớp theo màn hình cho CSS
+  const inPos = ['mid', 'end', 'think', 'pos', 'thinkpos'].includes(name);
+  $('tabPosGrp').setAttribute('aria-selected', String(inPos));
+  if (name === 'mid' || name === 'end' || name === 'think') store.setJSON('lastPosTab', name);
+  document.body.classList.toggle('grp-pos', name === 'mid' || name === 'end' || name === 'think');
+  document.body.className = document.body.className.replace(/\bscr-\S+/g, '').trim();
+  document.body.classList.add('scr-' + name);
   // Màn có bàn cờ: "khung cố định" — trang không cuộn, bàn cờ đứng yên, chỉ bảng bên cuộn bên trong
   document.body.classList.toggle('board-mode', !$('screenBoard').hidden);
   document.querySelectorAll('#screenBoard > .panel').forEach((p) => { p.scrollTop = 0; });
@@ -395,9 +412,12 @@ function showScreen(name) {
 }
 /** Chiều cao thanh trên + hàng tab (CSS dùng để tính cỡ bàn cờ vừa khít màn hình) */
 function setChrome() {
+  // Điện thoại: thanh điều hướng nằm ở đáy (trừ chiều cao); máy tính: cột bên trái (không trừ)
   const tabs = document.querySelector('.tabs');
-  const h = document.querySelector('.topbar').offsetHeight + (tabs && getComputedStyle(tabs).display !== 'none' ? tabs.offsetHeight : 0);
-  document.documentElement.style.setProperty('--chrome', h + 'px');
+  const top = document.querySelector('.topbar').offsetHeight;
+  const bottomNav = window.matchMedia('(max-width: 899px)').matches && tabs ? tabs.offsetHeight : 0;
+  document.documentElement.style.setProperty('--top-h', top + 'px');
+  document.documentElement.style.setProperty('--chrome', (top + bottomNav) + 'px');
 }
 window.addEventListener('resize', setChrome);
 window.addEventListener('orientationchange', () => setTimeout(setChrome, 300));
@@ -413,6 +433,17 @@ $('tabHome').onclick = () => overviewUI.enter();
 $('tabOpen').onclick = () => { leaveModes(); showScreen('openings'); openingsUI.renderList(); };
 $('tabPlay').onclick = () => { if (editorUI.isOpen()) editorUI.close(); if (openingsUI.isTraining()) openingsUI.exit(false); positionsUI.leave(); playUI.enter(); };
 $('tabMid').onclick = () => { leaveModes(); positionsUI.enter('mid'); };
+// Điện thoại: mục "Luyện thế" mở lại phần đã dùng gần nhất (Trung cuộc / Tàn cuộc / Tư duy)
+$('tabPosGrp').onclick = () => ({ mid: $('tabMid'), end: $('tabEnd'), think: $('tabThink') }[store.getJSON('lastPosTab', 'mid')] || $('tabMid')).click();
+// Menu "Thêm" (điện thoại): Bàn cờ tự do, phân tích ván, cài đặt, dữ liệu
+const dlgMore = $('dlgMore');
+$('tabMore').onclick = () => dlgMore.showModal();
+const fromMore = (fn) => () => { dlgMore.close(); fn(); };
+$('moreFree').onclick = fromMore(() => $('tabFree').click());
+$('moreGame').onclick = fromMore(() => $('btnGame').click());
+$('moreSettings').onclick = fromMore(() => $('btnSettings').click());
+$('moreExport').onclick = fromMore(() => $('hmExport').click());
+$('moreImport').onclick = fromMore(() => $('hmImport').click());
 $('tabEnd').onclick = () => { leaveModes(); positionsUI.enter('end'); };
 
 /** Nạp một biến / thế cờ vào bàn tự do (xem lại có chú thích) */
@@ -479,6 +510,12 @@ const overviewUI = initOverview({
   openings: () => openingsUI, positions: () => positionsUI,
 });
 // Bài luyện hôm nay (khai cuộc) từ màn hình Tổng quan
+// Màn chào: chưa có bộ khai cuộc => mở hộp chọn bộ ngay trên màn Hôm nay
+$('hmStartPick').onclick = () => {
+  if (!openingsUI.ready()) { toast('Đang tải dữ liệu khai cuộc…'); return; }
+  $('btnRepPick').click();
+  $('dlgRep').addEventListener('close', () => { if (!$('screenHome').hidden) overviewUI.render(); }, { once: true });
+};
 $('hmDaily').onclick = () => {
   if (!openingsUI.ready()) { toast('Đang tải dữ liệu khai cuộc…'); return; }
   leaveModes(); showScreen('openings'); openingsUI.renderList(); openingsUI.startDaily();

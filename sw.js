@@ -6,7 +6,7 @@
 // trên GitHub Pages (nơi không tự đặt header được).
 // File engine (thư mục engine/) được cache tự động ở lần dùng đầu tiên.
 // =====================================================================
-const CACHE_VERSION = 'xqt-v0.10.3';
+const CACHE_VERSION = 'xqt-v0.11.1';
 const APP_SHELL = [
   './',
   './index.html',

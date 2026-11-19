@@ -60,7 +60,10 @@ export function initPositions(ctx) {
     const all = [...data.endgames, ...data.classics];
     return kindFilter === 'all' ? all : all.filter((x) => x.kind === kindFilter);
   }
-  function themeOf(x) { return x.kind === 'mid' ? x.themes.map((t) => t.replace(/\d+ nước/, 'N nước')) : [x.kind === 'classic' ? 'Cờ thế cổ' : x.group, x.result === 'win' ? 'Thắng' : 'Hòa']; }
+  function midTitle(x) { return x.themes.find((t) => /^Chiếu bí/.test(t)) || (x.goal === 'mate' ? 'Chiếu bí' : 'Đòn được quân'); }
+  /** Nguồn dễ đọc: bỏ mã đường dẫn nội bộ của biến khai cuộc */
+  const niceSource = (src) => String(src || '').replace(/biến khai cuộc [\w/.-]+/g, 'một biến khai cuộc đã kiểm định');
+  function themeOf(x) { return x.kind === 'mid' ? x.themes.map((t) => t.replace(/^Chiếu bí \d+ nước$/, 'Chiếu bí')) : [x.kind === 'classic' ? 'Cờ thế cổ' : x.group, x.result === 'win' ? 'Thắng' : 'Hòa']; }
 
   function renderKinds() {
     const box = $('psKinds');
@@ -109,10 +112,12 @@ export function initPositions(ctx) {
       const p = progress[x.id];
       const b = document.createElement('button');
       b.className = 'op-card ps-card' + (p?.solved ? ' done' : p ? ' fail' : '');
-      const title = x.kind === 'mid' ? `${x.id.toUpperCase()} · ${SIDE[x.side]} đi` : x.name;
-      const tags = themeOf(x).map((t) => `<span class="tg${t === 'Thắng' ? ' win' : t === 'Hòa' ? ' draw' : ''}">${t}</span>`).join('');
+      // Tên thẻ theo nội dung (VD "Chiếu bí 2 nước · Đen đi"); mã số chỉ là dòng phụ
+      const title = x.kind === 'mid' ? `${midTitle(x)} · ${SIDE[x.side]} đi` : x.name;
+      const tagList = x.kind === 'mid' ? x.themes.filter((t) => !/^Chiếu bí/.test(t)) : themeOf(x);
+      const tags = tagList.map((t) => `<span class="tg${t === 'Thắng' ? ' win' : t === 'Hòa' ? ' draw' : ''}">${t}</span>`).join('');
       const st = p ? (p.solved ? `<b>✓ đã ${x.kind === 'end' ? 'hoàn thành' : 'giải'}${p.won ? ', thắng máy' : ''}</b>` : 'chưa đạt — làm lại') : 'chưa làm';
-      b.innerHTML = `<span class="op-name"></span><span class="tagrow">${tags}</span><span class="op-meta">${STARS(x.difficulty)} · ${st}</span>`;
+      b.innerHTML = `${x.kind === 'mid' ? `<span class="ps-id">${x.id.toUpperCase()}</span>` : ''}<span class="op-name"></span>${tags ? `<span class="tagrow">${tags}</span>` : ''}<span class="op-meta">${STARS(x.difficulty)} · ${st}</span>`;
       b.querySelector('.op-name').textContent = title;
       b.onclick = () => start(x);
       list.appendChild(b);
@@ -142,17 +147,17 @@ export function initPositions(ctx) {
   const label = (pos, iccs) => ctx.moveLabelOf(pos, parseCoordMove(iccs));
 
   function start(x) {
-    cur = x; hintStep = 0; busy = false; fight = null;
+    cur = x; hintStep = 0; busy = false; fight = null; setVerdict(null);
     ses = x.kind === 'end' ? null : new PuzzleSession({ ...x, hintText: hintTextOf(x) });
     active = true;
     prevFlip = view.flipped;
     ctx.setController(controller);
     ctx.showScreen('pos');
     if (view.flipped !== (x.side === 'b')) view.setFlipped(x.side === 'b');
-    $('pzTitle').textContent = x.kind === 'mid' ? `Trung cuộc ${x.id.toUpperCase()}` : x.name;
+    $('pzTitle').textContent = x.kind === 'mid' ? midTitle(x) : x.name;
     $('pzKind').textContent = { mid: 'Trung cuộc', end: 'Tàn cuộc', classic: 'Cờ thế cổ' }[x.kind];
-    $('pzMeta').textContent = `${STARS(x.difficulty)} · ${themeOf(x).join(' · ')}`;
-    $('pzSource').textContent = 'Nguồn: ' + x.source + (x.verification ? ` · Kiểm định: ${x.verification.engine}${x.verification.note ? ' — ' + x.verification.note : ''}` : '');
+    $('pzMeta').textContent = [STARS(x.difficulty), ...(x.kind === 'mid' ? x.themes.filter((t) => !/^Chiếu bí/.test(t)) : themeOf(x)), x.kind === 'mid' ? x.id.toUpperCase() : ''].filter(Boolean).join(' · ');
+    $('pzSource').textContent = 'Nguồn: ' + niceSource(x.source) + (x.verification ? ` · Kiểm định: ${x.verification.engine}${x.verification.note ? ' — ' + x.verification.note : ''}` : '');
     $('pzMethod').textContent = '';
     if (x.kind === 'mid') {
       $('pzGoal').textContent = `${SIDE[x.side]} đi — ${x.goal === 'mate' ? `chiếu bí trong ${(x.solution.length + 1) / 2} nước` : 'tìm đòn được quân'}.`;
@@ -190,15 +195,16 @@ export function initPositions(ctx) {
     onMove(m) { fight ? fightUserMove(m) : puzzleUserMove(m); },
   };
 
+  const turnText = (pos) => (pos.turn === userColor() ? `Lượt anh (${SIDE[cur.side]})` : 'Máy đang đi…');
   function render(animate = null) {
     const pos = curPos();
     const last = pos.history[pos.history.length - 1];
     view.render({ board: pos.board, last: last ? { from: last.from, to: last.to } : null, checkSq: pos.inCheck() ? pos.kingSq(pos.turn) : -1, animate });
     const el = $('status');
-    el.className = 'status';
-    el.textContent = fight
-      ? (fight.over ? 'Đã kết thúc' : fight.thinking ? 'Máy đang nghĩ…' : `Lượt: ${SIDE[pos.turn === RED ? 'r' : 'b']}`)
-      : ses.state === 'solved' ? 'Đã giải xong' : `Lượt: ${SIDE[pos.turn === RED ? 'r' : 'b']}`;
+    el.className = 'status' + (verdict ? ' v-' + verdict.kind : '');
+    el.textContent = (verdict ? verdict.text + ' · ' : '') + (fight
+      ? (fight.over ? 'Đã kết thúc' : fight.thinking ? 'Máy đang nghĩ…' : turnText(pos))
+      : ses.state === 'solved' ? 'Đã giải xong' : turnText(pos));
     // Nước đã đi
     const p = new Position(cur.fen);
     const played = fight ? fight.moves : ses.played;
@@ -206,6 +212,9 @@ export function initPositions(ctx) {
   }
 
   function feedback(kind, html) { const el = $('pzFeedback'); el.className = 'feedback ' + kind; el.innerHTML = html; }
+  // Kết quả ngắn hiện trên thanh trạng thái phía trên bàn cờ
+  let verdict = null;
+  const setVerdict = (kind, text) => { verdict = kind ? { kind, text } : null; };
 
   function updateButtons() {
     const solved = ses ? ses.state === 'solved' : fight?.over;
@@ -227,6 +236,7 @@ export function initPositions(ctx) {
     if (r.result === 'retry') {
       Sound.error();
       feedback('warn', `Chưa đúng (${label(before, r.played)}). Anh thử lại một lần nữa.`);
+      setVerdict('warn', '✗ Chưa đúng — thử lại');
       render();
       return;
     }
@@ -234,10 +244,12 @@ export function initPositions(ctx) {
     if (r.result === 'wrong') {
       Sound.error();
       feedback('bad', `Sai 2 lần. Nước đúng là <b>${label(before, r.correct)}</b>.`);
+      setVerdict('bad', `✗ Sai — đúng là ${label(before, r.correct)}`);
       compareWrong(before, r.played, r.correct);
     } else {
       soundFor(r.move.rec);
       feedback('ok', r.result === 'alt' ? 'Nước này cũng thắng (engine chấp nhận) — tính hoàn thành!' : 'Đúng!');
+      setVerdict('ok', '✓ Đúng');
     }
     render(m.dragged ? null : r.move);
     afterUser();
@@ -276,6 +288,7 @@ export function initPositions(ctx) {
     record(q >= 3, q);
     const extra = ses.mistakes ? ' (có nước phải xem đáp án)' : ses.retries || ses.hintsUsed ? ' (có thử lại / gợi ý)' : ' — giải ngay lần đầu!';
     const ok = q >= 3;
+    setVerdict(ok ? 'ok' : 'warn', ok ? '✓ Hoàn thành' : 'Chưa đạt');
     if (cur.kind === 'classic') {
       $('pzMethod').textContent = cur.note || '';
       feedback(ok ? 'ok' : 'warn', `Hết lời giải của sách — kết quả: ${cur.result === 'win' ? 'thắng' : 'hòa'}.${extra}`);
